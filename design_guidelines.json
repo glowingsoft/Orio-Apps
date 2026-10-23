@@ -1,0 +1,287 @@
+{
+  "app_name": "VoiceUp",
+  "personality": "6 Glass / Luxe DARK",
+  "personality_one_liner": "A cinematic, premium social voice experience with deep obsidian surfaces, rich gold and royal purple accents, and elegant translucent glass layers.",
+  "color": {
+    "background": "#0D0D0D",
+    "surface": "#121212",
+    "onSurface": "#FFFFFF",
+    "surfaceSecondary": "#1C1C1E",
+    "onSurfaceSecondary": "#EBEBF5",
+    "surfaceElevated": "#262629",
+    "surfaceTertiary": "#2C2C2E",
+    "onSurfaceTertiary": "#D1D1D6",
+    "surfaceInverse": "#FFFFFF",
+    "onSurfaceInverse": "#121212",
+    "card": "#1C1C1E",
+    "border": "#38383A",
+    "borderStrong": "#48484A",
+    "divider": "#2C2C2E",
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#EBEBF5",
+      "muted": "#8E8E93"
+    },
+    "brand": "#6A0DAD",
+    "onBrand": "#FFFFFF",
+    "brandPrimary": "#F5C542",
+    "onBrandPrimary": "#121212",
+    "brandSecondary": "#6A0DAD",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#4B0082",
+    "onBrandTertiary": "#FFFFFF",
+    "accent": {
+      "gold": "#F5C542",
+      "purple": "#6A0DAD"
+    },
+    "semantic": {
+      "success": "#32D74B",
+      "onSuccess": "#000000",
+      "warning": "#FFD60A",
+      "onWarning": "#000000",
+      "error": "#FF453A",
+      "onError": "#FFFFFF",
+      "info": "#0A84FF",
+      "onInfo": "#FFFFFF"
+    },
+    "overlay": "rgba(0, 0, 0, 0.6)",
+    "mic": {
+      "active": "#32D74B",
+      "muted": "#FF453A"
+    },
+    "seat": {
+      "empty": "rgba(255, 255, 255, 0.05)",
+      "locked": "rgba(255, 255, 255, 0.02)"
+    },
+    "vip": {
+      "bronze": "#CD7F32",
+      "silver": "#C0C0C0",
+      "gold": "#FFD700",
+      "diamond": "#B9F2FF"
+    },
+    "rarity": {
+      "common": "#8E8E93",
+      "rare": "#0A84FF",
+      "epic": "#BF5AF2",
+      "legendary": "#FFD60A"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Cairo",
+    "textFontFamily": "Cairo",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous spacing. Use safe-area paddings. No cramped lists. Maintain structural hierarchy through intentional gaps.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "xl": 28,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Apply to sticky headers, bottom tab bars, bottom-sheet drag handles.",
+      "Use on Room detail bottom action bar and chat overlay panel background.",
+      "Apply to floating action buttons (FAB).",
+      "Always layer a tinted base (rgba(18,18,18,0.75)) beneath the blur to guarantee text readability in dark mode."
+    ],
+    "dont's": [
+      "Do not use on regular list rows, standard buttons, or form fields.",
+      "Do not stack more than 2 glass surfaces on a single screen."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Splash",
+      "purpose": "Brand introduction and app loading.",
+      "states": {
+        "loading": "Full-bleed abstract purple/gold texture background, central gold VoiceUp logo, subtle fade-in animation.",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Full-screen layout using a background image (images.splash_bg) covered with a vertical dark gradient scrim. The logo sits centered. Safe area edges are respected."
+    },
+    {
+      "name": "Onboarding",
+      "purpose": "Introduce the app's core social audio features to new users.",
+      "states": {
+        "loading": "N/A",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "3 full-bleed slides with distinct background imagery. Each uses a heavy gradient-to-dark scrim (top 0% -> bottom 80% surfaceInverse). Text and gold primary CTA are anchored in the bottom 30% thumb zone."
+    },
+    {
+      "name": "Auth (Login / Register)",
+      "purpose": "User authentication via email and password.",
+      "states": {
+        "loading": "Gold spinner on CTA button.",
+        "empty": "N/A",
+        "error": "Inline red text above CTA for validation/auth errors."
+      },
+      "layout": "Single column form. Top typography header. Labels above inputs. Inputs use surfaceTertiary background. Primary 'Continue' CTA is sticky at the bottom inside KeyboardAvoidingView."
+    },
+    {
+      "name": "Home / Discover",
+      "purpose": "Browse and join live voice rooms, or start a new one.",
+      "states": {
+        "loading": "Skeleton grid for rooms.",
+        "empty": "Illustration of a microphone, 'No active rooms in this category', 'Start a Room' gold CTA.",
+        "error": "Readable error message with a 'Retry' button centered."
+      },
+      "layout": "Header with user avatar & notifications. Horizontal scrollable row for category chips (never wrap, use pill radius). A 2-column grid or large single-column list of live voice rooms. Room cards have image backgrounds with gradient scrims, host avatar, name, 'LIVE' badge, listener count, and tags. Floating action button (FAB) for 'Start a Room' in bottom right using glassmorphism."
+    },
+    {
+      "name": "Room Detail",
+      "purpose": "The core live audio experience with grid of mic seats and interactive chat.",
+      "states": {
+        "loading": "Spinner centered.",
+        "empty": "N/A",
+        "error": "Toast or modal indicating connection failure with 'Leave' button."
+      },
+      "layout": "Full-bleed with blurred room cover background. Top safe area: Room Name, ID, Host, Listeners count. Middle: Grid of 8 mic seats (1 at top center, 7 below in 2 rows). Each seat uses a circular avatar (or empty/locked placeholder), name tag, mic status icon, and pulsing ring when speaking. Bottom left: Overlay chat panel (max height ~30%) displaying system and user messages on a dark glass background. Bottom fixed action bar (glassmorphic): Mic toggle, raise-hand, gift (gold icon), chat input trigger, share, exit button."
+    },
+    {
+      "name": "Profile",
+      "purpose": "Display user identity, stats, VIP status, and badges.",
+      "states": {
+        "loading": "Skeleton over stats and tabs.",
+        "empty": "Empty state illustration in the tabs for 'No Gifts' or 'No Badges'.",
+        "error": "Failed to load profile data."
+      },
+      "layout": "Large cover banner at top (abstract purple/gold). Avatar overlapping the banner with VIP frame. User Name, ID, Country. Chips for Level, Wealth, Charm underneath. Primary action row (Follow/Message or Edit Profile). A tabbed section below (Info, Gifts, Badges) stretching to the bottom."
+    },
+    {
+      "name": "Wallet",
+      "purpose": "Manage coins, diamonds, and top-ups.",
+      "states": {
+        "loading": "Skeleton for balance and packages.",
+        "empty": "No transaction history text.",
+        "error": "Error loading packages."
+      },
+      "layout": "Top section: High-contrast Gold/Purple gradient card showing Coin Balance, secondary card for Diamonds. Below: A 2-column grid of top-up packages (Price, Coin Amount, Bonus Badge). 'Transaction History' row leading to a list."
+    },
+    {
+      "name": "Gifts Panel",
+      "purpose": "Bottom sheet to select and send virtual gifts to room participants.",
+      "states": {
+        "loading": "Spinner in grid.",
+        "empty": "N/A",
+        "error": "Error loading gifts."
+      },
+      "layout": "Rendered via @gorhom/bottom-sheet. Glass/dark background. Top tab row (Popular, Luxury, VIP). Grid of gifts (using transparent 3D icons). Each gift card shows icon, coin price, rarity colored border when selected. Bottom sticky bar: Recipient selector, quantity, and 'Send' button."
+    },
+    {
+      "name": "Messages & Chat",
+      "purpose": "Direct messaging between users.",
+      "states": {
+        "loading": "Skeleton list.",
+        "empty": "Illustration, 'No messages yet'.",
+        "error": "Error fetching."
+      },
+      "layout": "List of DMs with unread badges. Chat screen has header with user info, scrollable list of message bubbles, bottom sticky input area with mic and attach icons."
+    },
+    {
+      "name": "Leaderboards",
+      "purpose": "Rank top users by wealth, charm, and gifting.",
+      "states": {
+        "loading": "Skeleton list.",
+        "empty": "No rankings available.",
+        "error": "Error loading data."
+      },
+      "layout": "Top tabs for categories and timeframes. Top 3 users displayed in a podium layout (center #1 is larger with a gold crown, #2 and #3 on sides). The rest of the list follows below as standard rows with rank numbers."
+    },
+    {
+      "name": "Notifications",
+      "purpose": "System alerts, new followers, and room invites.",
+      "states": {
+        "loading": "Spinner.",
+        "empty": "Illustration, 'You are all caught up'.",
+        "error": "Error."
+      },
+      "layout": "Standard list layout with icon/avatar leading, message body, and timestamp trailing."
+    },
+    {
+      "name": "Settings",
+      "purpose": "App preferences and account management.",
+      "states": {
+        "loading": "N/A",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Grouped list rows (surfaceSecondary) for Language, Theme, Privacy, Logout. Chevron trailing icons."
+    }
+  ],
+  "images": {
+    "splash_bg": {
+      "url": "https://images.unsplash.com/photo-1686593686409-43456910d65c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHwxfHxwdXJwbGUlMjBhbmQlMjBnb2xkJTIwYWJzdHJhY3QlMjB0ZXh0dXJlfGVufDB8fHx8MTc5MDQ1ODk2Mnww&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1686593686409-43456910d65c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHwxfHxwdXJwbGUlMjBhbmQlMjBnb2xkJTIwYWJzdHJhY3QlMjB0ZXh0dXJlfGVufDB8fHx8MTc5MDQ1ODk2Mnww&ixlib=rb-4.1.0&q=85",
+      "alt": "purple and gold background with wavy lines"
+    },
+    "room_cover_1": {
+      "url": "https://images.unsplash.com/photo-1659083726524-9a341327fd99?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwxfHxuZW9uJTIwbWljcm9waG9uZSUyMHBvZGNhc3QlMjBzdHVkaW98ZW58MHx8fHwxNzkwNDU4OTYyfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "neon microphone podcast studio"
+    },
+    "avatar_female_1": {
+      "url": "https://images.unsplash.com/photo-1545266241-3516e2a6e016?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwzfHxiZWF1dGlmdWwlMjBhcmFiJTIwd29tYW4lMjBwcm9maWxlJTIwcGhvdG98ZW58MHx8fHwxNzkwNDU4OTYyfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "woman wearing white dress and hijab"
+    },
+    "avatar_male_1": {
+      "url": "https://images.unsplash.com/photo-1624411024074-18a756682b50?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwxfHxoYW5kc29tZSUyMGFyYWIlMjBtYW4lMjBwcm9maWxlJTIwcGhvdG98ZW58MHx8fHwxNzkwNDU4OTYyfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "man in white dress shirt wearing red and white hijab"
+    },
+    "gift_diamond": {
+      "url": "https://images.unsplash.com/photo-1738683959505-3739fea6b94f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwyfHxkaWFtb25kJTIwM2QlMjBpY29uJTIwaXNvbGF0ZWR8ZW58MHx8fHwxNzkwNDU4OTY3fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Three different colored diamonds"
+    },
+    "gift_rose": {
+      "url": "https://images.unsplash.com/photo-1750069685773-227950d603af?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwxfHxyZWQlMjByb3NlJTIwM2QlMjBpY29uJTIwaXNvbGF0ZWR8ZW58MHx8fHwxNzkwNDU4OTY3fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "red rose 3d icon"
+    },
+    "gift_treasure": {
+      "url": "https://images.unsplash.com/photo-1740625948252-a96c3cc5fb3c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2ODl8MHwxfHNlYXJjaHwxfHx0cmVhc3VyZSUyMGNoZXN0JTIwM2QlMjBpY29uJTIwaXNvbGF0ZWR8ZW58MHx8fHwxNzkwNDU4OTY3fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "treasure chest 3d icon"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Load 'Cairo' font from Google Fonts CDN to ensure excellent Arabic (RTL) and Latin (LTR) support.",
+    "RTL Support is critical: Use React Native's I18nManager.forceRTL(true) and layout attributes (marginStart/End instead of marginLeft/Right) so UI accurately mirrors for Arabic users.",
+    "Implement the Glass / Luxe Dark personality perfectly. Rely heavily on deep obsidian backgrounds (#0D0D0D / #121212) highlighted by #F5C542 (Gold) and #6A0DAD (Purple). Do not use solid white backgrounds.",
+    "The Room Detail screen is the heart of the app. Layout the 8 mic seats neatly (1 top center for host, 7 below). Implement smooth, bounded interactions for the bottom sheet and glass overlays.",
+    "For the Gifts Bottom Sheet, ensure a dark transparent overlay (rgba(0,0,0,0.6)) beneath the sheet to keep the focus on the gifts grid. Use the provided 3D isolated icons for realism.",
+    "Whenever overlaying text on images (like the Home Room Cards or Profile Banners), strictly enforce a vertical gradient-to-dark scrim (top 0% -> bottom 80%) to ensure WCAG AA readable text.",
+    "Avoid default system blue or purple gradients. Stick exactly to the brand primary and secondary hues provided in the JSON."
+  ]
+}

@@ -1,0 +1,163 @@
+/**
+ * OrioOrbs — Iter-65.
+ *
+ * Pure-SVG rendering of the ORIO brand's twin glowing, watery, intertwined
+ * "O" rings. Used:
+ *   • Full-size on the splash screen above the ORIO wordmark.
+ *   • Compact banner version at the top of Party Rooms / Posts / Messages /
+ *     Me, below the top controls/tabs and above the page content.
+ *
+ * The look matches the reference asset:
+ *   purple-to-black background space, two overlapping toruses with a smooth
+ *   magenta → blue → cyan gradient, intense neon rim glow, soft specular
+ *   highlights, and a diffused ground shadow underneath. No bitmap assets.
+ */
+import React from "react";
+import { View, StyleSheet } from "react-native";
+import Svg, {
+  Defs, LinearGradient as SvgLinearGradient, RadialGradient, Stop,
+  Ellipse, Path, G,
+} from "react-native-svg";
+
+type Props = {
+  /** `banner` = compact top-of-screen (height ~56). `hero` = splash. */
+  variant?: "banner" | "hero";
+  width?: number;
+};
+
+/* ---------- Single intertwined pair of rings ---------- */
+function OrbsSvg({ w, h }: { w: number; h: number }) {
+  // Draw on a 220×88 canvas so the twin orbs stay proportional. The intertwine
+  // trick: paint ring A fully, then paint the far half of ring B behind, then
+  // the near half of ring B in front of A so the two shapes visually weave.
+  return (
+    <Svg width={w} height={h} viewBox="0 0 220 88">
+      <Defs>
+        {/* Shared gradient — soft neon arc from magenta → violet → cyan */}
+        <SvgLinearGradient id="ringA" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0%"  stopColor="#F472B6" stopOpacity="1" />
+          <Stop offset="35%" stopColor="#A855F7" stopOpacity="1" />
+          <Stop offset="70%" stopColor="#60A5FA" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#22D3EE" stopOpacity="1" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="ringB" x1="1" y1="0" x2="0" y2="0">
+          <Stop offset="0%"  stopColor="#F472B6" stopOpacity="1" />
+          <Stop offset="40%" stopColor="#A855F7" stopOpacity="1" />
+          <Stop offset="75%" stopColor="#60A5FA" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#22D3EE" stopOpacity="1" />
+        </SvgLinearGradient>
+
+        {/* Ground glow underneath each orb */}
+        <RadialGradient id="floor" cx="50%" cy="50%" rx="50%" ry="50%">
+          <Stop offset="0%" stopColor="#A855F7" stopOpacity="0.55" />
+          <Stop offset="100%" stopColor="#A855F7" stopOpacity="0" />
+        </RadialGradient>
+
+        {/* Soft outer halo */}
+        <RadialGradient id="halo" cx="50%" cy="50%" rx="50%" ry="50%">
+          <Stop offset="0%" stopColor="#C084FC" stopOpacity="0.5" />
+          <Stop offset="60%" stopColor="#60A5FA" stopOpacity="0.14" />
+          <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
+        </RadialGradient>
+
+        {/* Glossy top-highlight gradient */}
+        <SvgLinearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.85" />
+          <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+        </SvgLinearGradient>
+      </Defs>
+
+      {/* ---- Ambient halo across the whole banner ---- */}
+      <Ellipse cx="110" cy="50" rx="118" ry="54" fill="url(#halo)" />
+
+      {/* ---- Ground glow puddles beneath each orb ---- */}
+      <Ellipse cx="80"  cy="72" rx="56" ry="10" fill="url(#floor)" opacity="0.9" />
+      <Ellipse cx="150" cy="72" rx="56" ry="10" fill="url(#floor)" opacity="0.9" />
+
+      {/* ============== RING A (left orb) ============== */}
+      {/* soft outer glow */}
+      <G opacity="0.55">
+        <Ellipse cx="80" cy="46" rx="46" ry="22" fill="none"
+          stroke="#A855F7" strokeOpacity="0.35" strokeWidth="14" />
+      </G>
+      <G opacity="0.75">
+        <Ellipse cx="80" cy="46" rx="44" ry="20" fill="none"
+          stroke="#C084FC" strokeOpacity="0.55" strokeWidth="7" />
+      </G>
+      {/* main glossy ring */}
+      <Ellipse cx="80" cy="46" rx="40" ry="18" fill="none"
+        stroke="url(#ringA)" strokeWidth="10" />
+      {/* inner bright edge */}
+      <Ellipse cx="80" cy="46" rx="40" ry="18" fill="none"
+        stroke="#FFFFFF" strokeOpacity="0.65" strokeWidth="1.4" />
+      {/* top specular highlight */}
+      <Path d="M 48,44 Q 80,30 112,44" stroke="url(#shine)" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+
+      {/* ============== RING B (right orb) — back half (behind A) ============== */}
+      {/* Draw only the FAR arc of B behind A so A reads in front at the overlap. */}
+      <G opacity="0.55">
+        <Path
+          d="M 150,46 m -40,0 a 40,18 0 0,0 80,0"
+          fill="none" stroke="#A855F7" strokeOpacity="0.35" strokeWidth="14"
+        />
+      </G>
+      <Path
+        d="M 150,46 m -40,0 a 40,18 0 0,0 80,0"
+        fill="none" stroke="url(#ringB)" strokeWidth="10"
+      />
+      <Path
+        d="M 150,46 m -40,0 a 40,18 0 0,0 80,0"
+        fill="none" stroke="#FFFFFF" strokeOpacity="0.55" strokeWidth="1.3"
+      />
+
+      {/* ============== RING A overlap re-emphasis ============== */}
+      {/* Repaint the near arc of A so it stays in front at the center weave. */}
+      <Path
+        d="M 80,46 m -40,0 a 40,18 0 0,0 80,0"
+        fill="none" stroke="url(#ringA)" strokeWidth="10"
+      />
+      <Path
+        d="M 80,46 m -40,0 a 40,18 0 0,0 80,0"
+        fill="none" stroke="#FFFFFF" strokeOpacity="0.55" strokeWidth="1.3"
+      />
+
+      {/* ============== RING B (right orb) — FRONT half ============== */}
+      <G opacity="0.55">
+        <Path
+          d="M 150,46 m -40,0 a 40,18 0 0,1 80,0"
+          fill="none" stroke="#A855F7" strokeOpacity="0.35" strokeWidth="14"
+        />
+      </G>
+      <Path
+        d="M 150,46 m -40,0 a 40,18 0 0,1 80,0"
+        fill="none" stroke="url(#ringB)" strokeWidth="10"
+      />
+      <Path
+        d="M 150,46 m -40,0 a 40,18 0 0,1 80,0"
+        fill="none" stroke="#FFFFFF" strokeOpacity="0.65" strokeWidth="1.4"
+      />
+      <Path d="M 118,44 Q 150,30 182,44" stroke="url(#shine)" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+
+      {/* ---- Twin specular dots to sell the "watery" sheen ---- */}
+      <Ellipse cx="62" cy="36" rx="4" ry="2" fill="#FFFFFF" opacity="0.85" />
+      <Ellipse cx="132" cy="36" rx="4" ry="2" fill="#FFFFFF" opacity="0.85" />
+    </Svg>
+  );
+}
+
+export function OrioOrbs({ variant = "banner", width }: Props) {
+  const base = width ?? (variant === "hero" ? 300 : 220);
+  const h = (base * 88) / 220;
+  return (
+    <View style={styles.wrap} pointerEvents="none" accessibilityLabel="ORIO" testID="orio-orbs">
+      <OrbsSvg w={base} h={h} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
