@@ -396,7 +396,13 @@ async def _migrate_rooms_host_plus_numbered(db) -> None:
 
 
 
-app = FastAPI(title="ORIO API", lifespan=lifespan)
+app = FastAPI(
+    title="ORIO API",
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -6,7 +6,13 @@
       "distribution": "internal",
       "android": { "buildType": "apk" }
     },
-    "preview": { "distribution": "internal" },
-    "production": {}
+    "preview": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "env": { "EXPO_PUBLIC_BACKEND_URL": "http://18.119.14.54" }
+    },
+    "production": {
+      "env": { "EXPO_PUBLIC_BACKEND_URL": "http://18.119.14.54" }
+    }
   }
 }
