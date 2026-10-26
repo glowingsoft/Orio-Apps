@@ -1,0 +1,133 @@
+name: frontend
+
+on:
+  push:
+    branches: [frontend]
+  pull_request:
+    branches: [frontend]
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WEB_DIR: /var/www/html
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Write .env from the EXPO_ENV secret
+        env:
+          EXPO_ENV: ${{ secrets.EXPO_ENV }}
+        run: |
+          [ -n "$EXPO_ENV" ] || { echo "::error::EXPO_ENV secret is not set (repository secret with the frontend .env contents)"; exit 1; }
+          printf '%s\n' "$EXPO_ENV" > .env
+      - name: Lint (report only — pre-existing errors)
+        continue-on-error: true
+        run: yarn lint
+      - name: Type check (report only — pre-existing errors)
+        continue-on-error: true
+        run: npx tsc --noEmit
+      - name: Android bundle compiles
+        run: npx expo export --platform android --output-dir dist-ci
+
+  web-deploy:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/frontend'
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+      - name: Write .env from the EXPO_ENV secret
+        working-directory: frontend
+        env:
+          EXPO_ENV: ${{ secrets.EXPO_ENV }}
+        run: |
+          [ -n "$EXPO_ENV" ] || { echo "::error::EXPO_ENV secret is not set"; exit 1; }
+          printf '%s\n' "$EXPO_ENV" > .env
+      - name: Build web
+        working-directory: frontend
+        run: npx expo export --platform web --output-dir dist-web
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Trust server host key
+        run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+      - name: Back up current site
+        run: |
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "sudo rsync -a --delete '$WEB_DIR/' '$WEB_DIR.prev/'"
+      - name: Upload site
+        run: |
+          rsync -rz --delete --chmod=D755,F644 --rsync-path="sudo rsync" \
+            frontend/dist-web/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$WEB_DIR/"
+      - name: Site responds (restores previous site on failure)
+        run: |
+          for i in $(seq 1 10); do
+            if curl -sf https://aazabex.com/ | grep -qi '<script'; then echo "Site OK"; exit 0; fi
+            sleep 3
+          done
+          echo "Site check failed — restoring previous site"
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "sudo rsync -a --delete '$WEB_DIR.prev/' '$WEB_DIR/'"
+          exit 1
+
+  apk-build:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/frontend'
+    runs-on: ubuntu-latest
+    environment: dev
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Skip when EXPO_TOKEN is not set
+        if: env.EXPO_TOKEN == ''
+        working-directory: .
+        run: echo "::notice::EXPO_TOKEN secret not set — skipping the EAS build."
+      - uses: actions/checkout@v4
+        if: env.EXPO_TOKEN != ''
+      - uses: actions/setup-node@v4
+        if: env.EXPO_TOKEN != ''
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - uses: expo/expo-github-action@v8
+        if: env.EXPO_TOKEN != ''
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Install dependencies
+        if: env.EXPO_TOKEN != ''
+        run: yarn install --frozen-lockfile
+      - name: Start Android preview build (APK)
+        if: env.EXPO_TOKEN != ''
+        # Runs on EAS; uses the `preview` profile in eas.json (backend URL set there).
+        # The APK download link appears on expo.dev under the project's builds.
+        run: eas build --platform android --profile preview --non-interactive --no-wait

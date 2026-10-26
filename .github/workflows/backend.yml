@@ -1,0 +1,110 @@
+name: backend
+
+# Push to `backend` → check, then deploy to the server. Pull requests to `backend` → check only.
+on:
+  push:
+    branches: [backend]
+  pull_request:
+    branches: [backend]
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Server layout: backend code lives directly in BACKEND_DIR, with its venv inside it.
+  BACKEND_DIR: /home/ubuntu/orio
+  VENV_DIR: /home/ubuntu/orio/venv
+  BACKUP_DIR: /home/ubuntu/orio.prev
+  SERVICE: orio
+  HEALTH_URL: https://aazabex.com/api/health
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      mongo:
+        image: mongo:8.0
+        ports: ["27017:27017"]
+    env:
+      MONGO_URL: mongodb://localhost:27017
+      DB_NAME: orio_ci
+      ACCESS_SECRET: ci-access-secret-0123456789abcdef0123
+      REFRESH_SECRET: ci-refresh-secret-0123456789abcdef012
+      TEST_RECHARGE_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile check
+        run: python -m py_compile server.py admin_dashboard.py admin_phase1.py account_deletion.py moderation.py push.py
+      - name: Backend starts and is healthy
+        run: |
+          uvicorn server:app --port 8001 > backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8001/api/health | grep -q '"db":true'; then curl -s http://localhost:8001/api/health; echo; exit 0; fi
+            sleep 2
+          done
+          echo "Backend did not start"; cat backend.log; exit 1
+      - name: Backend log
+        if: failure()
+        run: tail -200 backend.log
+
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/backend'
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency:
+      group: deploy-backend
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Trust server host key
+        run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+      - name: Check server layout
+        run: |
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "test -f '$BACKEND_DIR/server.py' && test -x '$VENV_DIR/bin/pip'" \
+            || { echo "::error::Expected $BACKEND_DIR/server.py and $VENV_DIR/bin/pip on the server"; exit 1; }
+      - name: Back up current code
+        # The venv is excluded: it is never copied, overwritten or deleted.
+        run: |
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "rsync -a --delete --exclude 'venv/' --exclude '__pycache__/' '$BACKEND_DIR/' '$BACKUP_DIR/'"
+      - name: Upload code
+        # The server's .env, venv, uploads and caches stay untouched.
+        run: |
+          rsync -az --exclude '.env' --exclude 'venv/' --exclude '__pycache__/' --exclude 'tests/' --exclude '*.log' \
+            backend/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$BACKEND_DIR/"
+      - name: Install, restart, health check (rolls back on failure)
+        run: |
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" bash -s <<EOF
+          set -e
+          rollback() {
+            echo "Deploy failed — restoring previous code"
+            rsync -a --delete --exclude 'venv/' '$BACKUP_DIR/' '$BACKEND_DIR/'
+            sudo systemctl restart '$SERVICE'
+            exit 1
+          }
+          '$VENV_DIR/bin/pip' install -q -r '$BACKEND_DIR/requirements.txt' || rollback
+          sudo systemctl restart '$SERVICE' || rollback
+          for i in \$(seq 1 30); do
+            if curl -sf '$HEALTH_URL' | grep -q '"db":true'; then curl -s '$HEALTH_URL'; echo; exit 0; fi
+            sleep 2
+          done
+          sudo journalctl -u '$SERVICE' -n 50 --no-pager
+          rollback
+          EOF
