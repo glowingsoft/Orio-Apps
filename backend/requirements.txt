@@ -1,6 +1,7 @@
 
 fastapi
 uvicorn[standard]
+websockets
 boto3
 requests-oauthlib
 cryptography

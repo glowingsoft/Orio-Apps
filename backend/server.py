@@ -411,6 +411,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(Exception)
+async def _unhandled_error(request, exc):
+    # Unhandled errors bypass CORSMiddleware, so browsers report them as CORS
+    # failures. Log the real traceback and keep the CORS header on the 500.
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"detail": "Internal server error"}, status_code=500,
+                        headers={"Access-Control-Allow-Origin": "*"})
+
+
 api = APIRouter(prefix="/api")
 
 
@@ -901,6 +912,24 @@ async def current_user(
 @api.get("/")
 async def root():
     return {"app": "ORIO", "version": "0.2.0", "status": "ok"}
+
+
+@api.get("/health")
+async def health():
+    """Deploy check: database, upload staging dir, storage backend, WebSocket support."""
+    import importlib.util
+    try:
+        await app.state.db.command("ping")
+        db_ok = True
+    except Exception:
+        db_ok = False
+    try:
+        _ensure_upload_tmp()
+        tmp_ok = True
+    except HTTPException:
+        tmp_ok = False
+    ws_ok = any(importlib.util.find_spec(m) for m in ("websockets", "wsproto"))
+    return {"db": db_ok, "upload_tmp": tmp_ok, "storage": "s3" if _S3_BUCKET else "emergent", "websockets": ws_ok}
 
 
 # ---------- Routes: Auth ----------
@@ -14589,7 +14618,21 @@ _STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "http
 _STORAGE_URL = _STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 _STORAGE_APP = "orio"
 _storage_key: Optional[str] = None
-_UPLOAD_TMP = Path("/tmp/orio_uploads")
+import tempfile as _tempfile  # noqa: E402
+# Chunked uploads are staged on local disk before going to storage. Override
+# with UPLOAD_TMP_DIR when the default temp dir is not writable by the service.
+_UPLOAD_TMP = Path((os.environ.get("UPLOAD_TMP_DIR") or "").strip() or Path(_tempfile.gettempdir()) / "orio_uploads")
+
+
+def _ensure_upload_tmp() -> None:
+    try:
+        _UPLOAD_TMP.mkdir(parents=True, exist_ok=True)
+        probe = _UPLOAD_TMP / f".probe-{os.getpid()}"
+        probe.write_bytes(b"")
+        probe.unlink()
+    except OSError:
+        logger.exception("Upload temp dir %s is not writable", _UPLOAD_TMP)
+        raise HTTPException(503, "Upload storage is not available")
 _MEDIA_LIMITS = {"image": 10 * 1024 * 1024, "video": 60 * 1024 * 1024, "audio": 6 * 1024 * 1024}
 _MEDIA_CACHE: dict = {}  # small in-process LRU of recently served objects
 
@@ -14598,9 +14641,13 @@ def _storage_init(force: bool = False) -> str:
     global _storage_key
     if _storage_key and not force:
         return _storage_key
-    resp = _requests.post(f"{_STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=30)
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
+    try:
+        resp = _requests.post(f"{_STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=30)
+        resp.raise_for_status()
+        _storage_key = resp.json()["storage_key"]
+    except Exception:
+        logger.exception("Emergent storage init failed (is S3_BUCKET set?)")
+        raise HTTPException(503, "Storage unavailable")
     return _storage_key
 
 
@@ -14715,13 +14762,13 @@ async def _media_init(body: _MediaInitIn, user=Depends(current_user)):
             raise HTTPException(400, "Gift video must be 10 seconds or shorter")
     elif body.purpose in ("cover", "gift") and (body.kind != "image" or int(user.get("vip_level", 0) or 0) < 5):
         raise HTTPException(403, "VIP5_REQUIRED")
+    _ensure_upload_tmp()
     db = app.state.db
     r = await db.media_uploads.insert_one({
         "owner_id": str(user["_id"]), "kind": body.kind, "mime": mime, "size": body.size,
         "purpose": body.purpose, "total_chunks": body.total_chunks, "next_index": 0,
         "duration": body.duration, "status": "uploading", "created_at": now_utc(),
     })
-    _UPLOAD_TMP.mkdir(parents=True, exist_ok=True)
     return {"upload_id": str(r.inserted_id)}
 
 
