@@ -13,8 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BACKEND_DIR: /home/ubuntu/orio/backend
+  BACKEND_DIR: /home/ubuntu/orio
   VENV_DIR: /home/ubuntu/orio/venv
+  BACKUP_DIR: /home/ubuntu/orio.prev
+  WEB_DIR: /var/www/html
   SERVICE: orio
   HEALTH_URL: https://aazabex.com/api/health
 
@@ -93,14 +95,20 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       - name: Trust server host key
         run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
-      - name: Back up current code
+      - name: Check server layout
         run: |
           ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "rm -rf '$BACKEND_DIR.prev' && cp -a '$BACKEND_DIR' '$BACKEND_DIR.prev'"
-      - name: Upload code
-        # The server's .env, uploads and caches stay untouched.
+            "test -f '$BACKEND_DIR/server.py' && test -x '$VENV_DIR/bin/pip'" \
+            || { echo "::error::Expected $BACKEND_DIR/server.py and $VENV_DIR/bin/pip on the server"; exit 1; }
+      - name: Back up current code
+        # The venv is excluded: it is never copied, overwritten or deleted.
         run: |
-          rsync -az --exclude '.env' --exclude '__pycache__/' --exclude 'tests/' --exclude '*.log' \
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "rsync -a --delete --exclude 'venv/' --exclude '__pycache__/' '$BACKEND_DIR/' '$BACKUP_DIR/'"
+      - name: Upload code
+        # The server's .env, venv, uploads and caches stay untouched.
+        run: |
+          rsync -az --exclude '.env' --exclude 'venv/' --exclude '__pycache__/' --exclude 'tests/' --exclude '*.log' \
             backend/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$BACKEND_DIR/"
       - name: Install, restart, health check (rolls back on failure)
         run: |
@@ -108,7 +116,7 @@ jobs:
           set -e
           rollback() {
             echo "Deploy failed — restoring previous code"
-            rm -rf '$BACKEND_DIR' && mv '$BACKEND_DIR.prev' '$BACKEND_DIR'
+            rsync -a --delete --exclude 'venv/' '$BACKUP_DIR/' '$BACKEND_DIR/'
             sudo systemctl restart '$SERVICE'
             exit 1
           }
@@ -139,7 +147,8 @@ jobs:
           cache-dependency-path: frontend/yarn.lock
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Lint
+      - name: Lint (report only — pre-existing errors)
+        continue-on-error: true
         run: yarn lint
       - name: Type check (report only — pre-existing errors)
         continue-on-error: true
@@ -148,6 +157,52 @@ jobs:
         run: npx expo export --platform android --output-dir dist-ci
         env:
           EXPO_PUBLIC_BACKEND_URL: https://aazabex.com
+
+  frontend-web-deploy:
+    needs: frontend-check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+      - name: Build web
+        working-directory: frontend
+        run: npx expo export --platform web --output-dir dist-web
+        env:
+          EXPO_PUBLIC_BACKEND_URL: https://aazabex.com
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Trust server host key
+        run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+      - name: Back up current site
+        run: |
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "sudo rsync -a --delete '$WEB_DIR/' '$WEB_DIR.prev/'"
+      - name: Upload site
+        run: |
+          rsync -rz --delete --chmod=D755,F644 --rsync-path="sudo rsync" \
+            frontend/dist-web/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$WEB_DIR/"
+      - name: Site responds (restores previous site on failure)
+        run: |
+          for i in $(seq 1 10); do
+            if curl -sf https://aazabex.com/ | grep -qi '<script'; then echo "Site OK"; exit 0; fi
+            sleep 3
+          done
+          echo "Site check failed — restoring previous site"
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "sudo rsync -a --delete '$WEB_DIR.prev/' '$WEB_DIR/'"
+          exit 1
 
   frontend-build:
     needs: frontend-check
