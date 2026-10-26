@@ -17,20 +17,21 @@ export class ApiError extends Error {
   }
 }
 
-// True when the JWT expires within 30s. Together with waiting for the startup
-// 401 (which browsers log as a console error even though we recover).
+let seenToken: { token: string; at: number } | null = null;
 function expiresSoon(token: string): boolean {
+  if (seenToken?.token !== token) seenToken = { token, at: Date.now() };
   try {
     const b64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    const { exp } = JSON.parse(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)));
-    return typeof exp === "number" && exp * 1000 - Date.now() < 30_000;
+    const { exp, iat } = JSON.parse(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)));
+    if (typeof exp !== "number" || typeof iat !== "number") return false;
+    return Date.now() - seenToken.at > (exp - iat) * 1000 - 30_000;
   } catch {
     return false;
   }
 }
 
 async function request<T = any>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
-  if (retry && !path.startsWith("/auth/")) {
+  if (retry && (!path.startsWith("/auth/") || path === "/auth/me")) {
     if (accessToken ? expiresSoon(accessToken) : refreshInFlight || (await getRefreshToken())) await tryRefresh();
   }
   const deviceId = await getDeviceId();

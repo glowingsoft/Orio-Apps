@@ -9,10 +9,10 @@
     "preview": {
       "distribution": "internal",
       "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_BACKEND_URL": "http://18.119.14.54" }
+      "env": { "EXPO_PUBLIC_BACKEND_URL": "https://aazabex.com" }
     },
     "production": {
-      "env": { "EXPO_PUBLIC_BACKEND_URL": "http://18.119.14.54" }
+      "env": { "EXPO_PUBLIC_BACKEND_URL": "https://aazabex.com" }
     }
   }
 }
