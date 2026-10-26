@@ -3,7 +3,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Modal } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { Link, useRouter } from "expo-router";
+import { /* Link, */ useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
@@ -205,11 +205,13 @@ export default function Login() {
               <Pressable onPress={() => setMode(null)} style={{ marginTop: spacing.md, alignItems: "center" }}>
                 <Text style={{ color: colors.brandPrimary, fontSize: 13, fontWeight: "700" }}>{t.otherOptions}</Text>
               </Pressable>
+              {/* Email sign-up is disabled: email is login-only.
               <Link href="/(auth)/register" asChild>
                 <Pressable testID="go-to-register" style={{ marginTop: spacing.md, alignItems: "center" }}>
                   <Text style={{ color: colors.onSurfaceSecondary }}>{t.newHere} <Text style={{ color: colors.brandPrimary, fontWeight: "800" }}>{t.createAccount}</Text></Text>
                 </Pressable>
               </Link>
+              */}
             </View>
           ) : (
             <View style={{ gap: 12 }}>

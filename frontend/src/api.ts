@@ -111,11 +111,12 @@ async function doRefresh(): Promise<boolean> {
   }
 }
 
-export async function apiRegister(email: string, password: string, username: string, nickname: string) {
-  const t = await request<any>("/auth/register", { method: "POST", body: JSON.stringify({ email, password, username, nickname }) });
-  accessToken = t.access_token; await setRefreshToken(t.refresh_token);
-  return t;
-}
+// Email sign-up is disabled: email is login-only (the backend route is commented out too).
+// export async function apiRegister(email: string, password: string, username: string, nickname: string) {
+//   const t = await request<any>("/auth/register", { method: "POST", body: JSON.stringify({ email, password, username, nickname }) });
+//   accessToken = t.access_token; await setRefreshToken(t.refresh_token);
+//   return t;
+// }
 export async function apiLogin(email: string, password: string) {
   const t = await request<any>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
   accessToken = t.access_token; await setRefreshToken(t.refresh_token);

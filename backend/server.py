@@ -426,11 +426,12 @@ api = APIRouter(prefix="/api")
 
 
 # ---------- Models ----------
-class RegisterIn(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=72)
-    username: str = Field(min_length=3, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
-    nickname: str = Field(min_length=1, max_length=20)
+# Email sign-up is disabled (see the commented /auth/register route).
+# class RegisterIn(BaseModel):
+#     email: EmailStr
+#     password: str = Field(min_length=8, max_length=72)
+#     username: str = Field(min_length=3, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
+#     nickname: str = Field(min_length=1, max_length=20)
 
 
 class LoginIn(BaseModel):
@@ -933,51 +934,52 @@ async def health():
 
 
 # ---------- Routes: Auth ----------
-@api.post("/auth/register", response_model=Tokens, status_code=201)
-async def register(body: RegisterIn):
-    db = app.state.db
-    email = norm_email(str(body.email))
-    username = body.username.lower()
-    if await db.users.find_one({"email": email}):
-        raise HTTPException(409, "Email is already registered")
-    if await db.users.find_one({"username": username}):
-        raise HTTPException(409, "Username is already taken")
-    from account_deletion import assert_credential_reusable as _reuse_ok
-    await _reuse_ok(db, email=email)
-    doc = {
-        "email": email,
-        "username": username,
-        "nickname": body.nickname,
-        "password_hash": pw_hash(body.password),
-        "bio": "",
-        "avatar_url": f"https://api.dicebear.com/7.x/avataaars/png?seed={username}",
-        "level": 1,
-        "wealth_level": 0,
-        "charm_level": 0,
-        "vip_level": 0,
-        # Iter-36: preserved underlying points for the generic level framework.
-        "wealth_points": 0,
-        "charm_points": 0,
-        "growth_points": 0,
-        "coins": 500,  # welcome bonus
-        "diamonds": 10,
-        "experience": 0,
-        "followers_count": 0,
-        "following_count": 0,
-        "friends_count": 0,
-        "numeric_id": await _generate_unique_numeric_id(db),
-        "created_at": now_utc(),
-        "language": "en",
-    }
-    r = await db.users.insert_one(doc)
-    uid = str(r.inserted_id)
-    # welcome bonus transaction
-    await db.wallet_transactions.insert_one({
-        "user_id": uid, "type": "welcome_bonus", "currency": "coins",
-        "amount": 500, "balance_after": 500, "created_at": now_utc(),
-        "status": "completed", "description": "Welcome to ORIO!"
-    })
-    return await issue_pair(db, uid)
+# Email sign-up is disabled: email is login-only. Accounts come from Google / Apple / phone / Facebook.
+# @api.post("/auth/register", response_model=Tokens, status_code=201)
+# async def register(body: RegisterIn):
+#     db = app.state.db
+#     email = norm_email(str(body.email))
+#     username = body.username.lower()
+#     if await db.users.find_one({"email": email}):
+#         raise HTTPException(409, "Email is already registered")
+#     if await db.users.find_one({"username": username}):
+#         raise HTTPException(409, "Username is already taken")
+#     from account_deletion import assert_credential_reusable as _reuse_ok
+#     await _reuse_ok(db, email=email)
+#     doc = {
+#         "email": email,
+#         "username": username,
+#         "nickname": body.nickname,
+#         "password_hash": pw_hash(body.password),
+#         "bio": "",
+#         "avatar_url": f"https://api.dicebear.com/7.x/avataaars/png?seed={username}",
+#         "level": 1,
+#         "wealth_level": 0,
+#         "charm_level": 0,
+#         "vip_level": 0,
+#         # Iter-36: preserved underlying points for the generic level framework.
+#         "wealth_points": 0,
+#         "charm_points": 0,
+#         "growth_points": 0,
+#         "coins": 500,  # welcome bonus
+#         "diamonds": 10,
+#         "experience": 0,
+#         "followers_count": 0,
+#         "following_count": 0,
+#         "friends_count": 0,
+#         "numeric_id": await _generate_unique_numeric_id(db),
+#         "created_at": now_utc(),
+#         "language": "en",
+#     }
+#     r = await db.users.insert_one(doc)
+#     uid = str(r.inserted_id)
+#     # welcome bonus transaction
+#     await db.wallet_transactions.insert_one({
+#         "user_id": uid, "type": "welcome_bonus", "currency": "coins",
+#         "amount": 500, "balance_after": 500, "created_at": now_utc(),
+#         "status": "completed", "description": "Welcome to ORIO!"
+#     })
+#     return await issue_pair(db, uid)
 
 
 @api.post("/auth/login", response_model=Tokens)

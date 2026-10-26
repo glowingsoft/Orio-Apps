@@ -8,7 +8,7 @@ import {
 } from "./auth/storage";
 import {
   apiAuthProviders, apiAppleSignIn, apiFacebookExchange, apiGoogleSession, apiLogin, apiLogout, apiMe,
-  apiPhoneSendOtp, apiPhoneVerifyOtp, apiRegister, apiRevokeRefresh, setAccessToken, tryRefresh,
+  apiPhoneSendOtp, apiPhoneVerifyOtp, /* apiRegister, */ apiRevokeRefresh, setAccessToken, tryRefresh,
   type AuthProviders,
 } from "./api";
 import { queryClient } from "./query-client";
@@ -21,7 +21,8 @@ type Ctx = {
   loading: boolean;
   providers: AuthProviders;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, username: string, nickname: string) => Promise<void>;
+  // Email sign-up is disabled: email is login-only.
+  // signUp: (email: string, password: string, username: string, nickname: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithPhoneSendOtp: (phoneE164: string) => Promise<{ resend_cooldown_seconds: number }>;
   signInWithPhoneVerify: (phoneE164: string, code: string, nickname?: string) => Promise<void>;
@@ -218,10 +219,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await apiLogin(email, password);
     await refresh();
   };
-  const signUp = async (email: string, password: string, username: string, nickname: string) => {
-    await apiRegister(email, password, username, nickname);
-    await refresh();
-  };
+  // Email sign-up is disabled: email is login-only.
+  // const signUp = async (email: string, password: string, username: string, nickname: string) => {
+  //   await apiRegister(email, password, username, nickname);
+  //   await refresh();
+  // };
   const signOut = async () => {
     const id = user?.id;
     try { await apiLogout(); } catch {}
@@ -323,7 +325,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthCtx.Provider value={{
       user, loading, providers,
-      signIn, signUp,
+      signIn, /* signUp, */
       signInWithGoogle, signInWithPhoneSendOtp, signInWithPhoneVerify, signInWithFacebook, signInWithApple,
       signOut, refresh,
       accounts, maxAccounts: MAX_ACCOUNTS, switchAccount, addAccount, removeSavedAccount,
