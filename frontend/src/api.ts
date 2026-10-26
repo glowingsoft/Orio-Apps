@@ -17,7 +17,20 @@ export class ApiError extends Error {
   }
 }
 
+// True when the JWT expires within 30s, so we refresh before sending instead of
+// eating a 401 (which browsers log as a console error even though we recover).
+function expiresSoon(token: string): boolean {
+  try {
+    const b64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const { exp } = JSON.parse(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)));
+    return typeof exp === "number" && exp * 1000 - Date.now() < 30_000;
+  } catch {
+    return false;
+  }
+}
+
 async function request<T = any>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  if (retry && accessToken && expiresSoon(accessToken)) await tryRefresh();
   const deviceId = await getDeviceId();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
