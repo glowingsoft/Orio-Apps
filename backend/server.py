@@ -15269,11 +15269,6 @@ async def _root_health():
     return {"status": "ok"}
 
 
-@api.get("/health")
-async def _api_health():
-    return {"status": "ok"}
-
-
 app.include_router(api)
 
 
