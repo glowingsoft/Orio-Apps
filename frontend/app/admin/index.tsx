@@ -52,7 +52,7 @@ export default function AdminOverview() {
     <AdminShell title="Overview">
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.hello}>ORIO control center</Text>
+          <Text style={styles.hello}>Yazeen control center</Text>
           <Text style={styles.helloSub}>
             {s ? `Server time ${new Date(s.server_time).toLocaleString()}` : "Loading…"}
           </Text>

@@ -104,6 +104,7 @@ async def finalize_user(db, user_id: str) -> bool:
     creds = {
         "email": u.get("email") if not str(u.get("email", "")).endswith(".invalid") else None,
         "phone": u.get("phone"), "facebook_id": u.get("facebook_id"), "apple_sub": u.get("apple_sub"),
+        "firebase_uid": u.get("firebase_uid"),
     }
     for kind, val in creds.items():
         if val:
@@ -127,7 +128,7 @@ async def finalize_user(db, user_id: str) -> bool:
             "diamonds": 0, "coins": 0, "vip_level": 0, "vip_expires_at": None,
             "entrance_effect": None, "gif_avatar_expires_at": None,
         },
-        "$unset": {"phone": "", "facebook_id": "", "apple_sub": "", "auth_provider": "",
+        "$unset": {"phone": "", "facebook_id": "", "apple_sub": "", "firebase_uid": "", "auth_provider": "",
                    "deletion_scheduled_at": "", "photos": "", "birthday": "", "country": ""},
     })
     # Non-destructive retirement: records are archived (ids re-keyed with an

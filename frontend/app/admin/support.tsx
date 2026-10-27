@@ -46,7 +46,7 @@ export default function AdminSupport() {
                 </View>
               ))}
               <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
-                <TextInput value={text} onChangeText={setText} placeholder="Reply as ORIO Support" placeholderTextColor={colors.muted} style={[adminStyles.input, { flex: 1 }]} />
+                <TextInput value={text} onChangeText={setText} placeholder="Reply as Yazeen Support" placeholderTextColor={colors.muted} style={[adminStyles.input, { flex: 1 }]} />
                 <Pressable disabled={!text.trim() || reply.isPending} onPress={() => reply.mutate()} style={adminStyles.primaryBtn}>
                   <Text style={adminStyles.primaryBtnText}>Send</Text>
                 </Pressable>

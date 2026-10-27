@@ -106,7 +106,7 @@ export default function Settings() {
         {
           icon: "document-text",
           label: t.termsOfService || "Terms of Service",
-          onPress: () => Alert.alert(t.termsOfService || "Terms of Service", t.termsBody || "By using ORIO you agree to our Terms."),
+          onPress: () => Alert.alert(t.termsOfService || "Terms of Service", t.termsBody || "By using Yazeen you agree to our Terms."),
         },
         {
           icon: "shield-checkmark",
@@ -171,7 +171,7 @@ export default function Settings() {
       <ConfirmModal
         visible={exitOpen}
         title={t.exitWarningTitle || "Warning"}
-        body={t.exitWarningBody || "You are about to exit ORIO"}
+        body={t.exitWarningBody || "You are about to exit Yazeen"}
         primaryLabel={t.confirmExit || "Confirm Exit"}
         secondaryLabel={t.cancel || "Cancel"}
         primaryTone="danger"

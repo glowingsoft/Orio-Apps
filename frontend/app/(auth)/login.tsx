@@ -74,6 +74,7 @@ export default function Login() {
   };
 
   const onGoogle = async () => {
+    if (googleLoading) return;
     setErr(null);
     setGoogleLoading(true);
     try { await signInWithGoogle(); }
@@ -185,7 +186,7 @@ export default function Login() {
               <Image source={LOGO_URL} style={styles.logoImg} contentFit="contain" />
             </View>
             {/* ORIO wordmark — LARGER than the O logo */}
-            <Text style={styles.wordmark} accessibilityRole="header">ORIO</Text>
+            <Text style={styles.wordmark} accessibilityRole="header">YAZEEN</Text>
             <Text style={styles.tagline}>{t.tagline}</Text>
           </View>
 

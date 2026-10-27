@@ -12,9 +12,9 @@ import { mediaUrl } from "@/src/media/upload";
 const YELLOW = "#FFD54A";
 
 export const ROOM_NOTICE_AR =
-  "النظام: أهلاً بك في اوريو | Orio.\n\nيُمنع منعاً باتاً نشر المحتوى الإباحي،\nأو الشتائم، أو ممارسة الأنشطة المخالفة للقوانين.\n\nتحرص الإدارة على مراقبة الغرف على مدار 24 ساعة من قبل فريق الإشراف.\nفي حال ملاحظة أي سلوك مخالف، يُرجى الإبلاغ عنه فوراً.";
+  "النظام: أهلاً بك في يازين | Yazeen.\n\nيُمنع منعاً باتاً نشر المحتوى الإباحي،\nأو الشتائم، أو ممارسة الأنشطة المخالفة للقوانين.\n\nتحرص الإدارة على مراقبة الغرف على مدار 24 ساعة من قبل فريق الإشراف.\nفي حال ملاحظة أي سلوك مخالف، يُرجى الإبلاغ عنه فوراً.";
 export const ROOM_NOTICE_EN =
-  "System: Welcome to Orio | اوريو.\n\nPosting pornographic content, insults,\nor engaging in illegal activities is strictly prohibited.\n\nThe administration monitors rooms 24 hours a day through the moderation team.\nIf you notice any violating behavior, please report it immediately.";
+  "System: Welcome to Yazeen | يازين.\n\nPosting pornographic content, insults,\nor engaging in illegal activities is strictly prohibited.\n\nThe administration monitors rooms 24 hours a day through the moderation team.\nIf you notice any violating behavior, please report it immediately.";
 
 export function RoomSystemNotice({ isRTL }: { isRTL: boolean }) {
   return (

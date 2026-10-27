@@ -69,7 +69,7 @@ export function AdminShell({ title, children }: { title: string; children: React
         <View style={styles.sidebar}>
           <View style={styles.brand}>
             <View style={styles.brandDot} />
-            <Text style={styles.brandText}>ORIO Admin</Text>
+            <Text style={styles.brandText}>Yazeen Admin</Text>
           </View>
           <View style={{ marginTop: spacing.xl }}>
             {NAV.map((n) => {

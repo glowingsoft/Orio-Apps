@@ -163,7 +163,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         kind: "error",
         message: roomMsg(m) ? roomMsg(m)!
           : m.includes("CALL_BUSY") ? (ar ? "المستخدم في مكالمة أخرى" : "User is busy on another call")
-          : m.includes("CALLEE_UNAVAILABLE") ? (ar ? "لا يوجد رد — المستخدم غير متصل بالتطبيق حاليًا" : "No Answer — the user isn't in ORIO right now")
+          : m.includes("CALLEE_UNAVAILABLE") ? (ar ? "لا يوجد رد — المستخدم غير متصل بالتطبيق حاليًا" : "No Answer — the user isn't in Yazeen right now")
           : (ar ? "تعذّر بدء المكالمة" : "Could not start the call"),
       });
     }
@@ -230,7 +230,7 @@ function MiniCall({ call, elapsed, muted, onExpand, onHangup }: {
           ? <Image source={call.peer.avatar_url} style={styles.miniAvatar} contentFit="cover" />
           : <View style={[styles.miniAvatar, { backgroundColor: colors.surfaceTertiary }]} />}
         <View>
-          <VipName style={styles.miniName} numberOfLines={1} name={call.peer.nickname || "ORIO"} color={(call.peer as any).name_color} vipLevel={(call.peer as any).vip_level} />
+          <VipName style={styles.miniName} numberOfLines={1} name={call.peer.nickname || "Yazeen"} color={(call.peer as any).name_color} vipLevel={(call.peer as any).vip_level} />
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <Icon name={muted ? "mic-off" : "mic"} size={11} color={colors.success} />
             <Text style={styles.miniTime} testID="call-mini-time">{fmt(elapsed)}</Text>
@@ -268,7 +268,7 @@ function CallScreen({ call, ar, muted, speaker, elapsed, onAccept, onHangup, onM
               ? <Image source={call.peer.avatar_url} style={styles.avatar} contentFit="cover" />
               : <View style={[styles.avatar, { backgroundColor: colors.surfaceTertiary }]} />}
           </View>
-          <VipName style={styles.name} numberOfLines={1} testID="call-peer-name" name={call.peer.nickname || "ORIO"} color={(call.peer as any).name_color} vipLevel={(call.peer as any).vip_level} />
+          <VipName style={styles.name} numberOfLines={1} testID="call-peer-name" name={call.peer.nickname || "Yazeen"} color={(call.peer as any).name_color} vipLevel={(call.peer as any).vip_level} />
           <Text style={styles.status} testID="call-status">{status}</Text>
         </View>
         {incoming ? (

@@ -82,7 +82,7 @@ async function ensureMicPermission(): Promise<boolean> {
       PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
       {
         title: "Microphone Permission",
-        message: "ORIO needs access to your microphone to join voice rooms.",
+        message: "Yazeen needs access to your microphone to join voice rooms.",
         buttonPositive: "OK",
       }
     );

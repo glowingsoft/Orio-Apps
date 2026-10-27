@@ -149,7 +149,7 @@ export default function RoomInfoScreen() {
     if (!room) return;
     const link = Linking.createURL(`/room/${id}`);
     try {
-      await Share.share({ message: `${room.name} — join me on ORIO! ${link}` });
+      await Share.share({ message: `${room.name} — join me on Yazeen! ${link}` });
     } catch {}
   };
 

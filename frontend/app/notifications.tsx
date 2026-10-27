@@ -125,8 +125,8 @@ function notifText(n: SystemNotification, ar: boolean): string {
         : `${p.username} (VIP${p.vip_level}) kicked you from ${p.room_name}.`;
     case "report_received":
       return ar
-        ? "لقد استلمنا بلاغك وسنبذل قصارى جهدنا لمعالجته. شكراً لك. فريق ORIO."
-        : "We received your report and will do our best to handle it. Thank you. ORIO Team.";
+        ? "لقد استلمنا بلاغك وسنبذل قصارى جهدنا لمعالجته. شكراً لك. فريق يازين."
+        : "We received your report and will do our best to handle it. Thank you. Yazeen Team.";
     case "gif_approved":
       return ar ? "تمت الموافقة على صورة GIF الخاصة بك بنجاح." : "Your GIF was successfully approved.";
     case "activity_approved":

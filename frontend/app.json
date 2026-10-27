@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "ORIO",
-    "slug": "orio",
+    "name": "Yazeen",
+    "slug": "yazeen",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,16 +9,17 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.oriotechnology.orio",
+      "bundleIdentifier": "com.aazabex.yazeen",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "ORIO uses your mic for voice rooms, calls and voice messages.",
+        "NSMicrophoneUsageDescription": "Yazeen uses your mic for voice rooms, calls and voice messages.",
         "NSPhotoLibraryUsageDescription": "Pick a profile photo from your gallery",
         "UIBackgroundModes": [
           "audio"
         ],
         "NSCameraUsageDescription": "Take photos to send in private chats",
-        "NSAppleMusicUsageDescription": "Play your songs in ORIO rooms"
+        "NSAppleMusicUsageDescription": "Play your songs in Yazeen rooms"
       }
     },
     "android": {
@@ -26,7 +27,8 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.oriotechnology.orio",
+      "package": "com.aazabex.yazeen",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
@@ -67,7 +69,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "ORIO uses your mic for voice rooms and mic seats."
+          "microphonePermission": "Yazeen uses your mic for voice rooms and mic seats."
         }
       ],
       "expo-asset",
@@ -100,7 +102,7 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Pick photos to share in ORIO",
+          "photosPermission": "Pick photos to share in Yazeen",
           "isAccessMediaLocationEnabled": false,
           "granularPermissions": [
             "audio",
@@ -121,9 +123,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e7cef9b0-9b42-4804-929e-2b6f730c7307"
+        "projectId": "49cf9f56-9faf-4c6a-be31-f3f8c88e9095"
       }
     },
-    "owner": "hashir24"
+    "owner": "aazabex"
   }
 }

@@ -85,10 +85,22 @@ jobs:
           ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "rsync -a --delete --exclude 'venv/' --exclude '__pycache__/' '$BACKEND_DIR/' '$BACKUP_DIR/'"
       - name: Upload code
-        # The server's .env, venv, uploads and caches stay untouched.
+        # The server's .env, Firebase key, venv, uploads and caches stay untouched.
         run: |
-          rsync -az --exclude '.env' --exclude 'venv/' --exclude '__pycache__/' --exclude 'tests/' --exclude '*.log' \
+          rsync -az --exclude '.env' --exclude 'service-account.json' --exclude 'venv/' --exclude '__pycache__/' --exclude 'tests/' --exclude '*.log' \
             backend/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$BACKEND_DIR/"
+      - name: Write Firebase key from the FIREBASE_SERVICE_ACCOUNT secret
+        # Optional: if the secret is not set, the key file already on the server is kept.
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT not set — keeping the server's existing service-account.json"; exit 0
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('type')=='service_account' and d.get('private_key')" \
+            || { echo "::error::FIREBASE_SERVICE_ACCOUNT is not a valid service account JSON"; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "umask 077 && cat > '$BACKEND_DIR/service-account.json' && chmod 600 '$BACKEND_DIR/service-account.json'"
       - name: Install, restart, health check (rolls back on failure)
         run: |
           ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" bash -s <<EOF

@@ -220,7 +220,7 @@ export default function EditProfile() {
         </View>
 
         {/* Numeric ID (read-only) */}
-        <FieldRow label={t.numericIdLabel || "ORIO ID"} rtl={isRTL}>
+        <FieldRow label={t.numericIdLabel || "Yazeen ID"} rtl={isRTL}>
           <Text style={styles.readonlyValue}>{user.numeric_id}</Text>
         </FieldRow>
 

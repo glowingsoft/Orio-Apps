@@ -1,17 +1,41 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { AppState, Platform } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import {
-  getRefreshToken, setRefreshToken, listAccounts, upsertAccount, removeAccount, getAccountToken,
-  MAX_ACCOUNTS, type SavedAccount,
+  getRefreshToken,
+  setRefreshToken,
+  listAccounts,
+  upsertAccount,
+  removeAccount,
+  getAccountToken,
+  MAX_ACCOUNTS,
+  type SavedAccount,
 } from "./auth/storage";
 import {
-  apiAuthProviders, apiAppleSignIn, apiFacebookExchange, apiGoogleSession, apiLogin, apiLogout, apiMe,
-  apiPhoneSendOtp, apiPhoneVerifyOtp, /* apiRegister, */ apiRevokeRefresh, setAccessToken, tryRefresh,
+  apiAuthProviders,
+  apiAppleSignIn,
+  apiFacebookExchange,
+  /* apiGoogleSession, */ apiGoogleFirebase,
+  apiLogin,
+  apiLogout,
+  apiMe,
+  apiPhoneSendOtp,
+  apiPhoneVerifyOtp,
+  /* apiRegister, */ apiRevokeRefresh,
+  setAccessToken,
+  tryRefresh,
   type AuthProviders,
 } from "./api";
 import { queryClient } from "./query-client";
+import { getGoogleIdTokenWeb, GoogleSignInError } from "./auth/googleWeb";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -24,10 +48,20 @@ type Ctx = {
   // Email sign-up is disabled: email is login-only.
   // signUp: (email: string, password: string, username: string, nickname: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
-  signInWithPhoneSendOtp: (phoneE164: string) => Promise<{ resend_cooldown_seconds: number }>;
-  signInWithPhoneVerify: (phoneE164: string, code: string, nickname?: string) => Promise<void>;
+  signInWithPhoneSendOtp: (
+    phoneE164: string,
+  ) => Promise<{ resend_cooldown_seconds: number }>;
+  signInWithPhoneVerify: (
+    phoneE164: string,
+    code: string,
+    nickname?: string,
+  ) => Promise<void>;
   signInWithFacebook: (fbAccessToken: string) => Promise<void>;
-  signInWithApple: (identityToken: string, fullName?: string | null, email?: string | null) => Promise<void>;
+  signInWithApple: (
+    identityToken: string,
+    fullName?: string | null,
+    email?: string | null,
+  ) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   // Multi-account (max 5 per device)
@@ -40,15 +74,16 @@ type Ctx = {
 
 const AuthCtx = createContext<Ctx | null>(null);
 
-const EMERGENT_AUTH_URL = "https://auth.emergentagent.com/";
-const SESSION_ID_RE = /[?#&]session_id=([^&#]+)/;
+// Emergent Google auth — disabled, replaced by Firebase Google Sign-In (web).
+// const EMERGENT_AUTH_URL = "https://auth.emergentagent.com/";
+// const SESSION_ID_RE = /[?#&]session_id=([^&#]+)/;
 const FB_ACCESS_TOKEN_RE = /[?#&]access_token=([^&#]+)/;
 
-function extractSessionId(url: string | null | undefined): string | null {
-  if (!url) return null;
-  const m = url.match(SESSION_ID_RE);
-  return m ? decodeURIComponent(m[1]) : null;
-}
+// function extractSessionId(url: string | null | undefined): string | null {
+//   if (!url) return null;
+//   const m = url.match(SESSION_ID_RE);
+//   return m ? decodeURIComponent(m[1]) : null;
+// }
 
 function extractFbAccessToken(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -58,7 +93,12 @@ function extractFbAccessToken(url: string | null | undefined): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-const DEFAULT_PROVIDERS: AuthProviders = { google: true, email: true, phone: false, facebook: false };
+const DEFAULT_PROVIDERS: AuthProviders = {
+  google: true,
+  email: true,
+  phone: false,
+  facebook: false,
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User>(null);
@@ -67,18 +107,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   const consumedRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => { listAccounts().then(setAccounts); }, []);
-
+  useEffect(() => {
+    listAccounts().then(setAccounts);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
       const u = await apiMe();
       setUser(u);
       if (u?.id) {
-        setAccounts(await upsertAccount({
-          id: u.id, nickname: u.nickname, username: u.username,
-          avatar_url: u.avatar_url, numeric_id: u.numeric_id,
-        }));
+        setAccounts(
+          await upsertAccount({
+            id: u.id,
+            nickname: u.nickname,
+            username: u.username,
+            avatar_url: u.avatar_url,
+            numeric_id: u.numeric_id,
+          }),
+        );
       }
     } catch (e: any) {
       // Iter-122 — only a genuine auth failure signs the user out; transient
@@ -99,36 +145,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [refresh]);
 
-  const processSessionId = useCallback(async (sid: string | null) => {
-    if (!sid) return false;
-    if (consumedRef.current.has(sid)) return false;
-    consumedRef.current.add(sid);
-    try {
-      await apiGoogleSession(sid);
-      await refresh();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [refresh]);
+  // Emergent Google session — disabled.
+  // const processSessionId = useCallback(async (sid: string | null) => {
+  //   if (!sid) return false;
+  //   if (consumedRef.current.has(sid)) return false;
+  //   consumedRef.current.add(sid);
+  //   try {
+  //     await apiGoogleSession(sid);
+  //     await refresh();
+  //     return true;
+  //   } catch {
+  //     return false;
+  //   }
+  // }, [refresh]);
 
-  const processFbAccessToken = useCallback(async (at: string | null) => {
-    if (!at) return false;
-    if (consumedRef.current.has("fb:" + at)) return false;
-    consumedRef.current.add("fb:" + at);
-    try {
-      await apiFacebookExchange(at);
-      await refresh();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [refresh]);
+  const processFbAccessToken = useCallback(
+    async (at: string | null) => {
+      if (!at) return false;
+      if (consumedRef.current.has("fb:" + at)) return false;
+      consumedRef.current.add("fb:" + at);
+      try {
+        await apiFacebookExchange(at);
+        await refresh();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [refresh],
+  );
 
   useEffect(() => {
     // Non-blocking provider probe. If this fails we keep defaults
     // (Google + Email on, Phone + Facebook off).
-    apiAuthProviders().then(setProviders).catch(() => {});
+    apiAuthProviders()
+      .then(setProviders)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -141,7 +193,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (Platform.OS === "web") {
         try {
           // @ts-ignore
-          const p: string = typeof window !== "undefined" ? (window.location.pathname || "") : "";
+          const p: string =
+            typeof window !== "undefined" ? window.location.pathname || "" : "";
           onAdminPath = p.startsWith("/admin");
         } catch {}
       }
@@ -150,21 +203,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (Platform.OS === "web" && !onAdminPath) {
         try {
           // @ts-ignore
-          const href: string = typeof window !== "undefined" ? window.location.href : "";
-          const sid = extractSessionId(href);
-          if (sid) {
-            const ok = await processSessionId(sid);
-            // clean the URL
-            try {
-              // @ts-ignore
-              const u = new URL(window.location.href);
-              u.hash = u.hash.replace(SESSION_ID_RE, "");
-              u.searchParams.delete("session_id");
-              // @ts-ignore
-              window.history.replaceState(window.history.state, "", u.toString());
-            } catch {}
-            if (ok) { setLoading(false); return; }
-          }
+          const href: string =
+            typeof window !== "undefined" ? window.location.href : "";
+          // Emergent Google session_id return — disabled.
+          // const sid = extractSessionId(href);
+          // if (sid) {
+          //   const ok = await processSessionId(sid);
+          //   // clean the URL
+          //   try {
+          //     // @ts-ignore
+          //     const u = new URL(window.location.href);
+          //     u.hash = u.hash.replace(SESSION_ID_RE, "");
+          //     u.searchParams.delete("session_id");
+          //     // @ts-ignore
+          //     window.history.replaceState(window.history.state, "", u.toString());
+          //   } catch {}
+          //   if (ok) { setLoading(false); return; }
+          // }
           // Facebook implicit flow returns access_token in URL fragment.
           const fbAt = extractFbAccessToken(href);
           if (fbAt) {
@@ -176,19 +231,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               u.searchParams.delete("access_token");
               u.searchParams.delete("state");
               // @ts-ignore
-              window.history.replaceState(window.history.state, "", u.toString());
+              window.history.replaceState(
+                window.history.state,
+                "",
+                u.toString(),
+              );
             } catch {}
-            if (ok) { setLoading(false); return; }
+            if (ok) {
+              setLoading(false);
+              return;
+            }
           }
         } catch {}
       } else {
         // 2) Native: cold-start deep link
         try {
           const initial = await Linking.getInitialURL();
-          const sid = extractSessionId(initial);
-          if (sid && await processSessionId(sid)) { setLoading(false); return; }
+          // Emergent Google session_id deep link — disabled.
+          // const sid = extractSessionId(initial);
+          // if (sid && await processSessionId(sid)) { setLoading(false); return; }
           const fbAt = extractFbAccessToken(initial);
-          if (fbAt && await processFbAccessToken(fbAt)) { setLoading(false); return; }
+          if (fbAt && (await processFbAccessToken(fbAt))) {
+            setLoading(false);
+            return;
+          }
         } catch {}
       }
       // 3) Fallback: existing refresh token (retry briefly on network errors).
@@ -207,13 +273,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Hot deep link handler (native)
     const sub = Linking.addEventListener("url", ({ url }) => {
-      const sid = extractSessionId(url);
-      if (sid) { processSessionId(sid); return; }
+      // Emergent Google session_id deep link — disabled.
+      // const sid = extractSessionId(url);
+      // if (sid) {
+      //   processSessionId(sid);
+      //   return;
+      // }
       const fbAt = extractFbAccessToken(url);
       if (fbAt) processFbAccessToken(fbAt);
     });
-    return () => { try { sub.remove(); } catch {} };
-  }, [refresh, processSessionId, processFbAccessToken]);
+    return () => {
+      try {
+        sub.remove();
+      } catch {}
+    };
+  }, [refresh, processFbAccessToken]);
 
   const signIn = async (email: string, password: string) => {
     await apiLogin(email, password);
@@ -226,7 +300,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // };
   const signOut = async () => {
     const id = user?.id;
-    try { await apiLogout(); } catch {}
+    try {
+      await apiLogout();
+    } catch {}
     setAccessToken(null);
     await setRefreshToken(null);
     if (id) setAccounts(await removeAccount(id));
@@ -236,23 +312,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Switch the active session to another saved account. If its session has
   // expired, the previous session is restored and the stale entry removed.
-  const switchAccount = useCallback(async (id: string) => {
-    if (user?.id === id) return;
-    const rt = await getAccountToken(id);
-    const prev = await getRefreshToken();
-    let ok = false;
-    if (rt) {
-      setAccessToken(null);
-      await setRefreshToken(rt);
-      ok = await tryRefresh();
-    }
-    if (!ok) {
-      if (prev) { await setRefreshToken(prev); if (await tryRefresh()) await refresh(); }
-      throw new Error("SESSION_EXPIRED");
-    }
-    queryClient.clear();
-    await refresh();
-  }, [user, refresh]);
+  const switchAccount = useCallback(
+    async (id: string) => {
+      if (user?.id === id) return;
+      const rt = await getAccountToken(id);
+      const prev = await getRefreshToken();
+      let ok = false;
+      if (rt) {
+        setAccessToken(null);
+        await setRefreshToken(rt);
+        ok = await tryRefresh();
+      }
+      if (!ok) {
+        if (prev) {
+          await setRefreshToken(prev);
+          if (await tryRefresh()) await refresh();
+        }
+        throw new Error("SESSION_EXPIRED");
+      }
+      queryClient.clear();
+      await refresh();
+    },
+    [user, refresh],
+  );
 
   // Park the current session in the vault and return to the login screen.
   const addAccount = useCallback(async () => {
@@ -264,72 +346,122 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [accounts.length]);
 
   // Remove a saved (non-active) account from this device and revoke its session.
-  const removeSavedAccount = useCallback(async (id: string) => {
-    if (user?.id === id) return;
-    const rt = await getAccountToken(id);
-    if (rt) await apiRevokeRefresh(rt);
-    setAccounts(await removeAccount(id));
-  }, [user]);
+  const removeSavedAccount = useCallback(
+    async (id: string) => {
+      if (user?.id === id) return;
+      const rt = await getAccountToken(id);
+      if (rt) await apiRevokeRefresh(rt);
+      setAccounts(await removeAccount(id));
+    },
+    [user],
+  );
 
+  // Google Sign-In: web uses Firebase (popup → ID token → /auth/google/firebase).
+  // Native Google Sign-In is not implemented yet; the native module throws a clear message.
+  // Cancelling the popup resolves quietly; other failures throw a user-facing message.
   const signInWithGoogle = useCallback(async () => {
-    const redirect = Platform.OS === "web"
-      // @ts-ignore
-      ? (typeof window !== "undefined" ? window.location.origin + "/" : "")
-      : Linking.createURL("");
-    const authUrl = `${EMERGENT_AUTH_URL}?redirect=${encodeURIComponent(redirect)}`;
+    let idToken: string;
+    try {
+      idToken = await getGoogleIdTokenWeb();
+    } catch (e: any) {
+      if (e instanceof GoogleSignInError && e.code === "cancelled") return;
+      throw e;
+    }
+    await apiGoogleFirebase(idToken);
+    await refresh();
+  }, [refresh]);
 
-    if (Platform.OS === "web") {
-      // Redirect same tab so the session_id fragment lands on our origin.
-      try { /* @ts-ignore */ window.location.href = authUrl; } catch {}
-      return;
-    }
-
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirect);
-    // Try to extract session_id from result.url, otherwise it will be caught by the Linking listener
-    const url = (result as any)?.url as string | undefined;
-    const sid = extractSessionId(url);
-    if (sid) {
-      const ok = await processSessionId(sid);
-      if (!ok) throw new Error("Google sign-in failed");
-      return;
-    }
-    // No URL — could be a cancel or a delayed deep-link. Give the listener a moment.
-    await new Promise((r) => setTimeout(r, 400));
-    if (!user) {
-      // If still no user, treat as cancelled (silently).
-      if (result?.type === "cancel" || result?.type === "dismiss") return;
-      throw new Error("Google sign-in failed");
-    }
-  }, [processSessionId, user]);
+  // Emergent Google auth — disabled.
+  // const signInWithGoogle = useCallback(async () => {
+  //   const redirect =
+  //     Platform.OS === "web"
+  //       ? // @ts-ignore
+  //         typeof window !== "undefined"
+  //         ? window.location.origin + "/"
+  //         : ""
+  //       : Linking.createURL("");
+  //   const authUrl = `${EMERGENT_AUTH_URL}?redirect=${encodeURIComponent(redirect)}`;
+  //
+  //   if (Platform.OS === "web") {
+  //     // Redirect same tab so the session_id fragment lands on our origin.
+  //     try {
+  //       /* @ts-ignore */ window.location.href = authUrl;
+  //     } catch {}
+  //     return;
+  //   }
+  //
+  //   const result = await WebBrowser.openAuthSessionAsync(authUrl, redirect);
+  //   // Try to extract session_id from result.url, otherwise it will be caught by the Linking listener
+  //   const url = (result as any)?.url as string | undefined;
+  //   const sid = extractSessionId(url);
+  //   if (sid) {
+  //     const ok = await processSessionId(sid);
+  //     if (!ok) throw new Error("Google sign-in failed");
+  //     return;
+  //   }
+  //   // No URL — could be a cancel or a delayed deep-link. Give the listener a moment.
+  //   await new Promise((r) => setTimeout(r, 400));
+  //   if (!user) {
+  //     // If still no user, treat as cancelled (silently).
+  //     if (result?.type === "cancel" || result?.type === "dismiss") return;
+  //     throw new Error("Google sign-in failed");
+  //   }
+  // }, [processSessionId, user]);
 
   const signInWithPhoneSendOtp = useCallback(async (phoneE164: string) => {
     const r = await apiPhoneSendOtp(phoneE164);
     return { resend_cooldown_seconds: r.resend_cooldown_seconds || 30 };
   }, []);
 
-  const signInWithPhoneVerify = useCallback(async (phoneE164: string, code: string, nickname?: string) => {
-    await apiPhoneVerifyOtp(phoneE164, code, nickname);
-    await refresh();
-  }, [refresh]);
+  const signInWithPhoneVerify = useCallback(
+    async (phoneE164: string, code: string, nickname?: string) => {
+      await apiPhoneVerifyOtp(phoneE164, code, nickname);
+      await refresh();
+    },
+    [refresh],
+  );
 
-  const signInWithFacebook = useCallback(async (fbAccessToken: string) => {
-    await apiFacebookExchange(fbAccessToken);
-    await refresh();
-  }, [refresh]);
+  const signInWithFacebook = useCallback(
+    async (fbAccessToken: string) => {
+      await apiFacebookExchange(fbAccessToken);
+      await refresh();
+    },
+    [refresh],
+  );
 
-  const signInWithApple = useCallback(async (identityToken: string, fullName?: string | null, email?: string | null) => {
-    await apiAppleSignIn(identityToken, fullName, email);
-    await refresh();
-  }, [refresh]);
+  const signInWithApple = useCallback(
+    async (
+      identityToken: string,
+      fullName?: string | null,
+      email?: string | null,
+    ) => {
+      await apiAppleSignIn(identityToken, fullName, email);
+      await refresh();
+    },
+    [refresh],
+  );
 
   return (
-    <AuthCtx.Provider value={{
-      user, loading, providers,
-      signIn, /* signUp, */
-      signInWithGoogle, signInWithPhoneSendOtp, signInWithPhoneVerify, signInWithFacebook, signInWithApple,
-      signOut, refresh,
-      accounts, maxAccounts: MAX_ACCOUNTS, switchAccount, addAccount, removeSavedAccount,
-    }}>
+    <AuthCtx.Provider
+      value={{
+        user,
+        loading,
+        providers,
+        signIn /* signUp, */,
+        signInWithGoogle,
+        signInWithPhoneSendOtp,
+        signInWithPhoneVerify,
+        signInWithFacebook,
+        signInWithApple,
+        signOut,
+        refresh,
+        accounts,
+        maxAccounts: MAX_ACCOUNTS,
+        switchAccount,
+        addAccount,
+        removeSavedAccount,
+      }}
+    >
       {children}
     </AuthCtx.Provider>
   );

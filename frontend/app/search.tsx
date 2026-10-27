@@ -213,7 +213,7 @@ export default function SearchScreen() {
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                     <VipName
-                      name={u.nickname ?? u.username ?? "ORIO user"}
+                      name={u.nickname ?? u.username ?? "Yazeen user"}
                       color={(u as any).name_color}
                       style={styles.name}
                       numberOfLines={1}

@@ -80,7 +80,7 @@ export function LuxuryGiftBanner() {
               <Image source={{ uri: current.sender.avatar_url }} style={styles.avatar} contentFit="cover" />
               <View style={styles.textCol}>
                 <VipName
-                  name={current.sender.nickname || "ORIO"}
+                  name={current.sender.nickname || "Yazeen"}
                   color={current.sender.name_color}
                   vipLevel={current.sender.vip_level}
                   style={styles.sender}

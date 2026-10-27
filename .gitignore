@@ -86,3 +86,6 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# Local Google service account key
+/backend/service-account.json

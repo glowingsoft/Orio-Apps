@@ -117,7 +117,7 @@ export default function LanguageScreen() {
         <Text style={styles.infoText}>
           {isRTL
             ? "اللغة المحفوظة ستُطبَّق تلقائياً في كل مرة تفتح فيها التطبيق."
-            : "Your choice is saved and auto-applied every time you open ORIO."}
+            : "Your choice is saved and auto-applied every time you open Yazeen."}
         </Text>
       </View>
     </View>

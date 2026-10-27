@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, FlatList, TextInput, Pressable, KeyboardAvoidingView, Platform, Modal, Alert, Linking } from "react-native";
+import { View, Text, StyleSheet, FlatList, TextInput, Pressable, Platform, Modal, Alert, Linking } from "react-native";
+// The app root uses KeyboardProvider, which turns off Android's own resize-on-keyboard,
+// so the keyboard-controller version is needed to lift the input above the keyboard.
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -160,7 +163,7 @@ export default function Chat() {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, backgroundColor: colors.surface }}>
+    <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />

@@ -69,7 +69,7 @@ async def seed(db):
             # Isolated from every financial / progression system.
             "coins": 0, "diamonds": 0, "vip_level": 0, "wealth_points": 0, "charm_points": 0,
             "wealth_level": 0, "charm_level": 0, "level": 1, "experience": 0,
-            "followers_count": 0, "following_count": 0, "bio": "ORIO test account",
+            "followers_count": 0, "following_count": 0, "bio": "Yazeen test account",
             "created_at": _now(),
         }
         r = await db.users.insert_one(doc)
@@ -86,7 +86,7 @@ async def seed(db):
                 "vip_level": 0, "country_flag": owner["country_flag"]}
         await db.rooms.insert_one({
             "is_test": True, "test_batch": BATCH,
-            "name": name, "description": "ORIO test room", "category": cat,
+            "name": name, "description": "Yazeen test room", "category": cat,
             "owner_id": str(owner["_id"]), "owner_public": snap,
             "country_code": owner["country_code"], "country_flag": owner["country_flag"],
             "cover_url": f"https://picsum.photos/seed/orio-test-{cat}/400/400",

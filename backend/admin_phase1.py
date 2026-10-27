@@ -21,8 +21,9 @@ from admin_dashboard import resolve_admin_access, get_owner_email, PERMISSIONS_S
 logger = logging.getLogger(__name__)
 
 ORIO_TEAM_USERNAME = "orioteam"
-ORIO_WELCOME_TEXT = ("نرحب بك في اوريو شات، يمكنك تكوين صداقات والتعرف على أصدقاء جدد من أنحاء العالم "
-                     "والاستمتاع معهم، في الوقت الفعلي.Orio Team")
+OFFICIAL_TEAM_NAME = "Yazeen Team"
+ORIO_WELCOME_TEXT = ("نرحب بك في يازين، يمكنك تكوين صداقات والتعرف على أصدقاء جدد من أنحاء العالم "
+                     "والاستمتاع معهم، في الوقت الفعلي. فريق يازين")
 BAN_MESSAGE_AR = "لقد تم حظرك بسبب انتهاك خصوصية المجتمع."
 
 
@@ -119,9 +120,12 @@ async def ensure_orio_team(db) -> str:
     if u:
         if not u.get("is_official"):
             await db.users.update_one({"_id": u["_id"]}, {"$set": {"is_official": True}})
+        # Rebrand: rename only the display name; username/email stay as identifiers.
+        if u.get("nickname") == "Orio Team":
+            await db.users.update_one({"_id": u["_id"]}, {"$set": {"nickname": OFFICIAL_TEAM_NAME}})
         return str(u["_id"])
     r = await db.users.insert_one({
-        "email": "team@orio.official", "username": ORIO_TEAM_USERNAME, "nickname": "Orio Team",
+        "email": "team@orio.official", "username": ORIO_TEAM_USERNAME, "nickname": OFFICIAL_TEAM_NAME,
         "is_official": True, "profile_completed": True, "password_hash": None,
         "avatar_url": None, "coins": 0, "created_at": _now(),
     })

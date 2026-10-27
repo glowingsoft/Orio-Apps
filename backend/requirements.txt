@@ -30,3 +30,4 @@ typer
 # emergentintegrations
 httpx
 agora_token_builder
+firebase-admin

@@ -53,6 +53,7 @@
     "expo-system-ui": "57.0.4",
     "expo-video": "~57.0.5",
     "expo-web-browser": "57.0.3",
+    "firebase": "12.19.0",
     "lottie-react-native": "~7.3.8",
     "react": "19.2.3",
     "react-dom": "19.2.3",

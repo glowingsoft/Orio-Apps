@@ -160,7 +160,7 @@ export default function AdminLogin() {
       <View style={[styles.card, { maxWidth: Math.min(440, width - 32) }]}>
         <View style={styles.brandRow}>
           <View style={styles.brandDot} />
-          <Text style={styles.brandText}>ORIO Admin</Text>
+          <Text style={styles.brandText}>Yazeen Admin</Text>
         </View>
         <Text style={styles.title}>Sign in</Text>
         <Text style={styles.subtitle}>

@@ -299,7 +299,7 @@ function TeamEditor({ member, onClose }: {
                   <View style={styles.confirmBox}>
                     <Text style={{ color: colors.onSurface, marginBottom: 6, fontSize: 13 }}>
                       This will revoke admin access immediately. The user{"\u2019"}s normal
-                      ORIO account will NOT be deleted. Continue?
+                      Yazeen account will NOT be deleted. Continue?
                     </Text>
                     <View style={{ flexDirection: "row", gap: spacing.sm }}>
                       <Pressable onPress={() => remove.mutate()} disabled={remove.isPending} style={adminStyles.dangerBtn}>

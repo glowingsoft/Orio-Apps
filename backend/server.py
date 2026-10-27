@@ -117,6 +117,9 @@ async def lifespan(app: FastAPI):
     await db.users.create_index("phone", unique=True, sparse=True)
     await db.users.create_index("facebook_id", unique=True, sparse=True)
     await db.users.create_index("apple_sub", unique=True, sparse=True)
+    await db.users.create_index("firebase_uid", unique=True, sparse=True)
+    await db.push_devices.create_index("token", unique=True)
+    await db.push_devices.create_index("user_id")
     await db.room_badge_sessions.create_index([("room_id", 1), ("user_id", 1)], unique=True)
     await db.gift_transactions.create_index([("room_id", 1), ("created_at", -1)])
     # Iter-121 — rooms filter by the owner's CURRENT country/region (one-time idempotent sync).
@@ -287,7 +290,8 @@ async def lifespan(app: FastAPI):
         await _seed_admin(db)
     except Exception as _e:
         logger.warning(f"Iter-85 admin seed skipped: {_e}")
-    logger.info("ORIO backend ready")
+    logger.info("Yazeen backend ready")
+    _log_frontend_backend_urls()
     try:
         await _iter117_dedupe_rooms(db)
     except Exception as _e:
@@ -357,6 +361,37 @@ async def _backfill_numeric_ids(db) -> None:
             continue
 
 
+def _log_frontend_backend_urls() -> None:
+    """Print the EXPO_PUBLIC_BACKEND_URL values"""
+    import socket
+    import sys
+    argv = sys.argv
+
+    def _arg(name: str, default: str) -> str:
+        for i, a in enumerate(argv):
+            if a == name and i + 1 < len(argv):
+                return argv[i + 1]
+            if a.startswith(name + "="):
+                return a.split("=", 1)[1]
+        return default
+
+    port = _arg("--port", os.environ.get("PORT", "8000"))
+    host = _arg("--host", "127.0.0.1")
+    lines = [f"Frontend .env (web on this PC):     EXPO_PUBLIC_BACKEND_URL=http://localhost:{port}"]
+    if host in ("0.0.0.0", "::"):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))  # no packet is sent; just picks the LAN interface
+                lan_ip = s.getsockname()[0]
+            lines.append(f"Frontend .env (phone on same Wi-Fi): EXPO_PUBLIC_BACKEND_URL=http://{lan_ip}:{port}")
+        except OSError:
+            pass
+    else:
+        lines.append("For a phone on the same Wi-Fi, start uvicorn with --host 0.0.0.0")
+    for line in lines:
+        logger.info(line)
+
+
 async def _migrate_rooms_host_plus_numbered(db) -> None:
     """
     Migrate legacy room documents to the new host + N numbered mic seat layout.
@@ -397,19 +432,31 @@ async def _migrate_rooms_host_plus_numbered(db) -> None:
 
 
 app = FastAPI(
-    title="ORIO API",
+    title="Yazeen API",
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
+# Browsers may only call the API from these origins. Native apps send no Origin
+# header, so CORS does not affect them. Auth uses Bearer tokens, not cookies.
+CORS_ORIGINS = [o.strip().rstrip("/") for o in (os.environ.get("CORS_ORIGINS")
+                or "https://aazabex.com,https://www.aazabex.com").split(",") if o.strip()]
+# Local development: Expo web on localhost or a LAN address, any port.
+CORS_ORIGIN_REGEX = os.environ.get("CORS_ORIGIN_REGEX") or \
+    r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _cors_origin_allowed(origin: str) -> bool:
+    return origin in CORS_ORIGINS or bool(re.fullmatch(CORS_ORIGIN_REGEX, origin))
 
 
 @app.exception_handler(Exception)
@@ -418,8 +465,9 @@ async def _unhandled_error(request, exc):
     # failures. Log the real traceback and keep the CORS header on the 500.
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     from fastapi.responses import JSONResponse
-    return JSONResponse({"detail": "Internal server error"}, status_code=500,
-                        headers={"Access-Control-Allow-Origin": "*"})
+    origin = request.headers.get("origin") or ""
+    headers = {"Access-Control-Allow-Origin": origin, "Vary": "Origin"} if _cors_origin_allowed(origin) else {}
+    return JSONResponse({"detail": "Internal server error"}, status_code=500, headers=headers)
 
 
 api = APIRouter(prefix="/api")
@@ -788,10 +836,10 @@ async def seed_demo_rooms(db):
         r = await db.users.insert_one({
             "email": sys_email,
             "username": "orio",
-            "nickname": "ORIO",
+            "nickname": "Yazeen",
             "password_hash": pw_hash(secrets.token_hex(16)),
             "avatar_url": "https://images.unsplash.com/photo-1545266241-3516e2a6e016?w=200&h=200&fit=crop",
-            "bio": "Welcome to ORIO",
+            "bio": "Welcome to Yazeen",
             "vip_level": 5,
             "level": 20,
             "wealth_level": 15,
@@ -827,7 +875,7 @@ async def seed_demo_rooms(db):
             r = await db.users.insert_one({
                 "email": owner_email,
                 "username": f"demo_owner_{i}",
-                "nickname": f"ORIO {i + 1}",
+                "nickname": f"Yazeen {i + 1}",
                 "password_hash": pw_hash(secrets.token_hex(16)),
                 "avatar_url": "https://images.unsplash.com/photo-1545266241-3516e2a6e016?w=200&h=200&fit=crop",
                 "bio": "Demo room host",
@@ -841,10 +889,10 @@ async def seed_demo_rooms(db):
                 "is_system": True,
             })
             owner_id = str(r.inserted_id)
-            owner_nick = f"ORIO {i + 1}"
+            owner_nick = f"Yazeen {i + 1}"
         else:
             owner_id = str(owner["_id"])
-            owner_nick = owner.get("nickname") or f"ORIO {i + 1}"
+            owner_nick = owner.get("nickname") or f"Yazeen {i + 1}"
         # 1 host chair (index 0) + 8 numbered mic seats = 9 slots
         seats = [{"index": j, "user": None, "muted": False, "locked": False} for j in range(9)]
         await db.rooms.insert_one({
@@ -912,7 +960,7 @@ async def current_user(
 # ---------- Routes: root ----------
 @api.get("/")
 async def root():
-    return {"app": "ORIO", "version": "0.2.0", "status": "ok"}
+    return {"app": "Yazeen", "version": "0.2.0", "status": "ok"}
 
 
 @api.get("/health")
@@ -1557,7 +1605,7 @@ async def report_user(user_id: str, payload: ReportUserIn, user=Depends(current_
     r = await db.user_reports.insert_one(doc)
     # Iter-98 — confirmation notification for the reporter.
     await _sys_notify(db, str(user["_id"]), "report_received", {}, None,
-                      "We received your report and will do our best to handle it. Thank you. ORIO Team.")
+                      "We received your report and will do our best to handle it. Thank you. Yazeen Team.")
     return {"reported": True, "id": str(r.inserted_id)}
 
 
@@ -3182,7 +3230,7 @@ async def send_message(body: SendMessageIn, user=Depends(current_user)):
     await db.messages.insert_one(doc)
     await _push_users([body.recipient_id, str(user["_id"])], "dm_update", peer_ids=[str(user["_id"]), body.recipient_id])
     _preview = text if body.kind == "text" else ("📷" if body.kind == "image" else "🎤")
-    await _notify_push([body.recipient_id], user.get("nickname") or "ORIO", _preview,
+    await _notify_push([body.recipient_id], user.get("nickname") or "Yazeen", _preview,
                        f"/chat/{str(user['_id'])}", key=f"dm:{doc['_id']}")
     return {"ok": True, "text": text, "kind": body.kind, "created_at": doc["created_at"].isoformat()}
 
@@ -3220,7 +3268,7 @@ async def _dm_send_reaction(body: _DmReactionIn, user=Depends(current_user)):
     }
     await db.messages.insert_one(doc)
     await _push_users([body.recipient_id, uid], "dm_update", peer_ids=[uid, body.recipient_id])
-    await _notify_push([body.recipient_id], user.get("nickname") or "ORIO", doc["text"],
+    await _notify_push([body.recipient_id], user.get("nickname") or "Yazeen", doc["text"],
                        f"/chat/{uid}", key=f"dm:{doc['_id']}")
     return {"ok": True, "kind": "emoji", "emoji": body.emoji, "created_at": doc["created_at"].isoformat()}
 
@@ -3257,7 +3305,7 @@ async def _dm_send_gift(body: _DmGiftIn, user=Depends(current_user)):
         "read": False, "created_at": now_utc(),
     })
     await _push_users([body.recipient_id, str(user["_id"])], "dm_update", peer_ids=[str(user["_id"]), body.recipient_id])
-    await _notify_push([body.recipient_id], user.get("nickname") or "ORIO",
+    await _notify_push([body.recipient_id], user.get("nickname") or "Yazeen",
                        f"🎁 {(gift or {}).get('name', 'Gift')} x{body.quantity}", f"/chat/{str(user['_id'])}",
                        key=f"dmgift:{body.request_id}" if body.request_id else None)
     return res
@@ -5210,77 +5258,181 @@ async def _ws_room(ws: WebSocket, room_id: str, token: str = Query(...)):
             pass
 
 
-# ---------- Emergent Google Auth ----------
-class _GoogleSessionIn(BaseModel):
-    session_id: str = Field(min_length=8, max_length=512)
+# ---------- Emergent Google Auth (disabled) ----------
+# Replaced by /auth/google/firebase below. Kept for reference.
+# class _GoogleSessionIn(BaseModel):
+#     session_id: str = Field(min_length=8, max_length=512)
+#
+#
+# @api.post("/auth/google/session", response_model=Tokens)
+# async def _auth_google_session(body: _GoogleSessionIn):
+#     db = app.state.db
+#     try:
+#         async with _httpx.AsyncClient(timeout=10.0) as client:
+#             r = await client.get(
+#                 "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+#                 headers={"X-Session-ID": body.session_id},
+#             )
+#         if r.status_code != 200:
+#             raise HTTPException(401, "Invalid or expired Google session")
+#         data = r.json()
+#     except HTTPException:
+#         raise
+#     except Exception:
+#         raise HTTPException(401, "Google auth service unavailable")
+#
+#     email = norm_email(data.get("email") or "")
+#     if not email:
+#         raise HTTPException(400, "Google did not return an email")
+#     name = (data.get("name") or "ORIO User")[:30]
+#     picture = data.get("picture")
+#
+#     user = await db.users.find_one({"email": email})
+#     if not user:
+#         from account_deletion import assert_credential_reusable as _reuse_ok
+#         await _reuse_ok(db, email=email)
+#         base = "".join(ch for ch in email.split("@")[0] if ch.isalnum())[:14] or "user"
+#         candidate = base
+#         i = 0
+#         while await db.users.find_one({"username": candidate}):
+#             i += 1
+#             candidate = f"{base}{i}"
+#         doc = {
+#             "email": email,
+#             "username": candidate,
+#             "nickname": name,
+#             "password_hash": pw_hash(secrets.token_hex(24)),
+#             "auth_provider": "google",
+#             "avatar_url": picture or f"https://api.dicebear.com/7.x/avataaars/png?seed={candidate}",
+#             "bio": "",
+#             "level": 1,
+#             "wealth_level": 0,
+#             "charm_level": 0,
+#             "vip_level": 0,
+#             # Iter-36: seed the preserved points fields on account creation.
+#             "wealth_points": 0,
+#             "charm_points": 0,
+#             "growth_points": 0,
+#             "coins": 500,
+#             "diamonds": 10,
+#             "experience": 0,
+#             "followers_count": 0,
+#             "following_count": 0,
+#             "created_at": now_utc(),
+#             "language": "en",
+#         }
+#         ins = await db.users.insert_one(doc)
+#         uid = str(ins.inserted_id)
+#         await db.wallet_transactions.insert_one({
+#             "user_id": uid, "type": "welcome_bonus", "currency": "coins",
+#             "amount": 500, "balance_after": 500, "created_at": now_utc(),
+#             "status": "completed", "description": "Welcome to ORIO!",
+#         })
+#     else:
+#         uid = str(user["_id"])
+#     return await issue_pair(db, uid)
 
 
-@api.post("/auth/google/session", response_model=Tokens)
-async def _auth_google_session(body: _GoogleSessionIn):
-    db = app.state.db
+# ---------- Google Sign-In via Firebase Authentication (web) ----------
+# The browser signs in with Google through Firebase and sends us the Firebase ID
+# token. We verify it with the Firebase Admin SDK (signature, expiry, audience =
+# our project) and only then trust its uid / email claims.
+FIREBASE_PROJECT_ID = (os.environ.get("FIREBASE_PROJECT_ID") or "orio-4d359").strip()
+
+
+class _FirebaseGoogleIn(BaseModel):
+    id_token: str = Field(min_length=20, max_length=8192)
+
+
+def _verify_firebase_google_token(token: str) -> dict:
+    import push as _fb_push
+    from firebase_admin import auth as _fb_auth
     try:
-        async with _httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.get(
-                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-                headers={"X-Session-ID": body.session_id},
-            )
-        if r.status_code != 200:
-            raise HTTPException(401, "Invalid or expired Google session")
-        data = r.json()
-    except HTTPException:
-        raise
+        fb_app = _fb_push._firebase()
     except Exception:
-        raise HTTPException(401, "Google auth service unavailable")
+        logger.exception("Firebase Admin is not configured")
+        raise HTTPException(503, "Google sign-in is not configured")
+    try:
+        claims = _fb_auth.verify_id_token(token, app=fb_app, clock_skew_seconds=10)
+    except (_fb_auth.ExpiredIdTokenError, _fb_auth.RevokedIdTokenError):
+        raise HTTPException(401, "Google sign-in expired, please try again")
+    except _fb_auth.CertificateFetchError:
+        logger.exception("Could not fetch Firebase signing certificates")
+        raise HTTPException(503, "Google sign-in is temporarily unavailable")
+    except (_fb_auth.InvalidIdTokenError, ValueError):
+        raise HTTPException(401, "Invalid Google sign-in token")
+    if claims.get("aud") != FIREBASE_PROJECT_ID:
+        raise HTTPException(401, "Invalid Google sign-in token")
+    if (claims.get("firebase") or {}).get("sign_in_provider") != "google.com":
+        raise HTTPException(401, "Token is not from Google sign-in")
+    return claims
 
-    email = norm_email(data.get("email") or "")
-    if not email:
-        raise HTTPException(400, "Google did not return an email")
-    name = (data.get("name") or "ORIO User")[:30]
-    picture = data.get("picture")
 
-    user = await db.users.find_one({"email": email})
+@api.post("/auth/google/firebase", response_model=Tokens)
+async def _auth_google_firebase(body: _FirebaseGoogleIn):
+    from starlette.concurrency import run_in_threadpool
+    claims = await run_in_threadpool(_verify_firebase_google_token, body.id_token.strip())
+    firebase_uid = str(claims.get("uid") or claims.get("sub") or "").strip()
+    email = norm_email(claims.get("email") or "")
+    if not firebase_uid or not email:
+        raise HTTPException(400, "Google did not return an account email")
+    if claims.get("email_verified") is not True:
+        raise HTTPException(403, "Your Google email is not verified")
+    name = (claims.get("name") or "Yazeen User").strip()[:30] or "Yazeen User"
+    picture = claims.get("picture")
+
+    db = app.state.db
+    user = await db.users.find_one({"firebase_uid": firebase_uid})
     if not user:
-        from account_deletion import assert_credential_reusable as _reuse_ok
-        await _reuse_ok(db, email=email)
-        base = "".join(ch for ch in email.split("@")[0] if ch.isalnum())[:14] or "user"
-        candidate = base
-        i = 0
-        while await db.users.find_one({"username": candidate}):
-            i += 1
-            candidate = f"{base}{i}"
-        doc = {
-            "email": email,
-            "username": candidate,
-            "nickname": name,
-            "password_hash": pw_hash(secrets.token_hex(24)),
-            "auth_provider": "google",
-            "avatar_url": picture or f"https://api.dicebear.com/7.x/avataaars/png?seed={candidate}",
-            "bio": "",
-            "level": 1,
-            "wealth_level": 0,
-            "charm_level": 0,
-            "vip_level": 0,
-            # Iter-36: seed the preserved points fields on account creation.
-            "wealth_points": 0,
-            "charm_points": 0,
-            "growth_points": 0,
-            "coins": 500,
-            "diamonds": 10,
-            "experience": 0,
-            "followers_count": 0,
-            "following_count": 0,
-            "created_at": now_utc(),
-            "language": "en",
-        }
+        # Link only by a Google-verified email, and never take over an account
+        # that is already linked to a different Google identity.
+        user = await db.users.find_one({"email": email})
+        if user:
+            if user.get("firebase_uid") and user["firebase_uid"] != firebase_uid:
+                raise HTTPException(409, "This email is linked to a different Google account")
+            await db.users.update_one({"_id": user["_id"]}, {"$set": {"firebase_uid": firebase_uid}})
+    if user:
+        return await issue_pair(db, str(user["_id"]))
+
+    from account_deletion import assert_credential_reusable as _reuse_ok
+    await _reuse_ok(db, firebase_uid=firebase_uid, email=email)
+    base = "".join(ch for ch in email.split("@")[0] if ch.isalnum())[:14] or "user"
+    candidate = base
+    i = 0
+    while await db.users.find_one({"username": candidate}):
+        i += 1
+        candidate = f"{base}{i}"
+    doc = {
+        "firebase_uid": firebase_uid,
+        "email": email,
+        "username": candidate,
+        "nickname": name,
+        "password_hash": pw_hash(secrets.token_hex(24)),
+        "auth_provider": "google",
+        "avatar_url": picture or f"https://api.dicebear.com/7.x/avataaars/png?seed={candidate}",
+        "bio": "",
+        "level": 1, "wealth_level": 0, "charm_level": 0, "vip_level": 0,
+        "wealth_points": 0, "charm_points": 0, "growth_points": 0,
+        "coins": 500, "diamonds": 10, "experience": 0,
+        "followers_count": 0, "following_count": 0,
+        "numeric_id": await _generate_unique_numeric_id(db),
+        "created_at": now_utc(),
+        "language": "en",
+    }
+    try:
         ins = await db.users.insert_one(doc)
-        uid = str(ins.inserted_id)
-        await db.wallet_transactions.insert_one({
-            "user_id": uid, "type": "welcome_bonus", "currency": "coins",
-            "amount": 500, "balance_after": 500, "created_at": now_utc(),
-            "status": "completed", "description": "Welcome to ORIO!",
-        })
-    else:
-        uid = str(user["_id"])
+    except Exception:
+        # Concurrent first sign-in with the same Google account.
+        user = await db.users.find_one({"firebase_uid": firebase_uid}) or await db.users.find_one({"email": email})
+        if user:
+            return await issue_pair(db, str(user["_id"]))
+        raise HTTPException(500, "Could not create Google account")
+    uid = str(ins.inserted_id)
+    await db.wallet_transactions.insert_one({
+        "user_id": uid, "type": "welcome_bonus", "currency": "coins",
+        "amount": 500, "balance_after": 500, "created_at": now_utc(),
+        "status": "completed", "description": "Welcome to Yazeen!",
+    })
     return await issue_pair(db, uid)
 
 
@@ -5318,7 +5470,7 @@ async def _auth_apple(body: _AppleSignInIn):
     if not apple_sub:
         raise HTTPException(401, "Apple did not return a user id")
     email = norm_email(claims.get("email") or body.email or "") or None
-    name = (body.full_name or "").strip()[:30] or "ORIO User"
+    name = (body.full_name or "").strip()[:30] or "Yazeen User"
 
     db = app.state.db
     user = await db.users.find_one({"apple_sub": apple_sub})
@@ -5366,7 +5518,7 @@ async def _auth_apple(body: _AppleSignInIn):
     await db.wallet_transactions.insert_one({
         "user_id": uid, "type": "welcome_bonus", "currency": "coins",
         "amount": 500, "balance_after": 500, "created_at": now_utc(),
-        "status": "completed", "description": "Welcome to ORIO!",
+        "status": "completed", "description": "Welcome to Yazeen!",
     })
     return await issue_pair(db, uid)
 
@@ -6485,8 +6637,8 @@ async def _mic_invite(room_id: str, body: _MicInviteIn, user=Depends(current_use
         })
     except Exception:
         pass
-    await _notify_push([body.target_user_id], "ORIO",
-                       f"{inviter_pub.get('nickname') or 'ORIO'} invited you to a mic seat 🎤",
+    await _notify_push([body.target_user_id], "Yazeen",
+                       f"{inviter_pub.get('nickname') or 'Yazeen'} invited you to a mic seat 🎤",
                        f"/room/{room_id}", key=f"micinv:{room_id}:{body.target_user_id}:{int(time.time() // 60)}")
     return {"ok": True, "seat_index": idx, "target_user_id": body.target_user_id, "expires_in_s": _MIC_INVITE_TTL_S}
 
@@ -6916,7 +7068,7 @@ async def _report_room(room_id: str, payload: ReportUserIn, user=Depends(current
         doc["media_urls"] = m_urls
     r = await db.user_reports.insert_one(doc)
     await _sys_notify(db, str(user["_id"]), "report_received", {}, None,
-                      "We received your report and will do our best to handle it. Thank you. ORIO Team.")
+                      "We received your report and will do our best to handle it. Thank you. Yazeen Team.")
     return {"reported": True, "id": str(r.inserted_id)}
 
 
@@ -7496,8 +7648,8 @@ PREMIUM_ROOM_BACKGROUNDS: list[dict] = [
     # --- ORIO branded defaults ---
     # Iter-82 — Dedicated ORIO Welcome bg that every brand-new room ships
     # with. The owner can later swap it from Room Tools → الخلفية.
-    {"id": "orio_welcome",    "title_en": "ORIO Welcome",     "title_ar": "خلفية ORIO الترحيبية",   "category": "orio",    "image_url": "https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=1200&q=85"},
-    {"id": "orio_default",    "title_en": "ORIO Default",     "title_ar": "خلفية ORIO الافتراضية",  "category": "orio",    "image_url": "https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=1200&q=85"},
+    {"id": "orio_welcome",    "title_en": "Yazeen Welcome",     "title_ar": "خلفية يازين الترحيبية",   "category": "orio",    "image_url": "https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=1200&q=85"},
+    {"id": "orio_default",    "title_en": "Yazeen Default",     "title_ar": "خلفية يازين الافتراضية",  "category": "orio",    "image_url": "https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=1200&q=85"},
     # --- Luxury Cars ---
     {"id": "car_lamborghini", "title_en": "Lamborghini",      "title_ar": "لامبورغيني",  "category": "cars",    "image_url": "https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=1200&q=80"},
     {"id": "car_ferrari",     "title_en": "Ferrari",          "title_ar": "فيراري",      "category": "cars",    "image_url": "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1200&q=80"},
@@ -7794,7 +7946,7 @@ async def _admin_room_bg_decision(sub_id: str, body: _AdminBgDecisionIn, user=De
 
 # ---------- Emoji Packs ----------
 DEFAULT_EMOJI_PACKS = [
-    {"id": "pack_orio_1", "name": "ORIO Vibes",  "emojis": ["😀","😁","😂","🤣","😊","😍","😎","🤩","🥳","😜","🤯","🥺"]},
+    {"id": "pack_orio_1", "name": "Yazeen Vibes",  "emojis": ["😀","😁","😂","🤣","😊","😍","😎","🤩","🥳","😜","🤯","🥺"]},
     {"id": "pack_orio_2", "name": "Party Time",  "emojis": ["🎉","🎊","🎁","🍾","🥂","💃","🕺","🎶","🎵","🔥","✨","🌟"]},
     {"id": "pack_orio_3", "name": "Hearts",      "emojis": ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","💖","💗","💓","💞"]},
     {"id": "pack_orio_4", "name": "Reactions",   "emojis": ["👍","👎","👏","🙏","💪","🤝","👌","✌️","🤞","🤟","🤘","👋"]},
@@ -13076,7 +13228,7 @@ async def _auth_phone_verify_otp(body: _PhoneVerifyIn):
         while await db.users.find_one({"username": candidate}):
             i += 1
             candidate = f"{base[:12]}{i}"[:14]
-        nickname = (body.nickname or f"ORIO {phone[-4:]}")[:30]
+        nickname = (body.nickname or f"Yazeen {phone[-4:]}")[:30]
         doc = {
             "phone": phone,
             "username": candidate,
@@ -13106,7 +13258,7 @@ async def _auth_phone_verify_otp(body: _PhoneVerifyIn):
         await db.wallet_transactions.insert_one({
             "user_id": uid, "type": "welcome_bonus", "currency": "coins",
             "amount": 500, "balance_after": 500, "created_at": now_utc(),
-            "status": "completed", "description": "Welcome to ORIO!",
+            "status": "completed", "description": "Welcome to Yazeen!",
         })
     else:
         uid = str(user["_id"])
@@ -13169,7 +13321,7 @@ async def _auth_facebook_exchange(body: _FacebookExchangeIn):
     if not fb_id:
         raise HTTPException(401, "Facebook did not return a valid user id")
     email = norm_email(prof.get("email") or "") or None
-    name = (prof.get("name") or "ORIO User")[:30]
+    name = (prof.get("name") or "Yazeen User")[:30]
     pic = None
     try:
         pic = prof.get("picture", {}).get("data", {}).get("url")
@@ -13250,7 +13402,7 @@ async def _auth_facebook_exchange(body: _FacebookExchangeIn):
         await db.wallet_transactions.insert_one({
             "user_id": uid, "type": "welcome_bonus", "currency": "coins",
             "amount": 500, "balance_after": 500, "created_at": now_utc(),
-            "status": "completed", "description": "Welcome to ORIO!",
+            "status": "completed", "description": "Welcome to Yazeen!",
         })
     return await issue_pair(db, uid)
 
@@ -13802,7 +13954,7 @@ async def _admin_auth_google_session(body: _AdminGoogleSessionIn):
             "Admin team members must use the email/password login on /admin/login.",
         )
 
-    name = (data.get("name") or "ORIO Owner")[:30]
+    name = (data.get("name") or "Yazeen Owner")[:30]
     picture = data.get("picture")
 
     # Create or update the Owner user record. Mark `profile_completed=true` so
@@ -13823,7 +13975,7 @@ async def _admin_auth_google_session(body: _AdminGoogleSessionIn):
             "password_hash": pw_hash(secrets.token_hex(24)),  # random; owner uses Google
             "auth_provider": "google",
             "avatar_url": picture or f"https://api.dicebear.com/7.x/avataaars/png?seed={candidate}",
-            "bio": "ORIO Owner",
+            "bio": "Yazeen Owner",
             "level": 1,
             "wealth_level": 0, "charm_level": 0, "vip_level": 0,
             "wealth_points": 0, "charm_points": 0, "growth_points": 0,
@@ -14356,7 +14508,7 @@ async def _sys_notify(db, uid: str, kind: str, params: dict, action: Optional[di
             return
     else:
         await db.system_notifications.insert_one(doc)
-    await _notify_push([uid], "ORIO", title or "New notification", "/notifications", key=dedup_key and f"sys:{dedup_key}")
+    await _notify_push([uid], "Yazeen", title or "New notification", "/notifications", key=dedup_key and f"sys:{dedup_key}")
 
 
 async def _notify_room_kick(db, target_id: str, actor: dict, room: dict) -> None:
@@ -15183,7 +15335,7 @@ async def _room_chat_image(room_id: str, body: _RoomImageIn, user=Depends(curren
     return {"ok": True, "id": entry["mid"]}
 
 
-# ---- Push notifications (Emergent managed relay) ----
+# ---- Push notifications (Firebase Cloud Messaging) ----
 class RegisterPushBody(BaseModel):
     user_id: Optional[str] = None
     platform: Literal["android", "ios"]
@@ -15192,7 +15344,7 @@ class RegisterPushBody(BaseModel):
 
 @api.post("/register-push", status_code=201)
 async def _register_push(body: RegisterPushBody, user=Depends(current_user)):
-    await _push.register_device(str(user["_id"]), body.platform, body.device_token)
+    await _push.register_device(app.state.db, str(user["_id"]), body.platform, body.device_token)
     return {"status": "registered"}
 
 
@@ -15227,7 +15379,7 @@ async def _notify_push(recipient_ids: list[str], title: str, message: str, actio
             data = {"title": title[:80], "message": message[:200]}
             if action_url:
                 data["action_url"] = action_url
-            await _push.send_push(ids, data, idempotency_key=key)
+            await _push.send_push(app.state.db, ids, data, idempotency_key=key)
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Push failed (non-blocking): {e}")
     asyncio.create_task(_run())

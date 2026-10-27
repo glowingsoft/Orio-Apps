@@ -396,7 +396,7 @@ export default function RoomDetail() {
     if (!room) return;
     try {
       await Share.share({
-        message: `Join me on ORIO — ${room.name} (Room ID: ${String(room.id).slice(-6).toUpperCase()})`,
+        message: `Join me on Yazeen — ${room.name} (Room ID: ${String(room.id).slice(-6).toUpperCase()})`,
       });
       setMenuOpen(false);
     } catch {}

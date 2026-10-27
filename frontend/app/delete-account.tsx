@@ -34,7 +34,7 @@ const AR: Policy = {
     { title: "2. إزالة الحساب والبيانات", body: ["سيتم حذف ملفك الشخصي ومعلومات حسابك والارتباطات الاجتماعية الخاصة به بشكل نهائي، وفقًا لسياسة الخصوصية ومتطلبات الاحتفاظ القانونية. ولن يتمكن المستخدمون الآخرون من زيارة ملفك المحذوف أو التواصل معك من خلاله."] },
     { title: "3. تحرير وسائل تسجيل الدخول", body: [
       "بعد اكتمال الحذف، سيتم إلغاء ربط رقم هاتفك وبريدك الإلكتروني ووسائل تسجيل الدخول المرتبطة بالحساب، حيثما ينطبق ذلك.",
-      "يمكنك إنشاء حساب جديد لاحقًا، مع مراعاة القيود الأمنية المعتمدة في ORIO، ومنها إمكانية فرض فترة انتظار تصل إلى 3 أيام قبل إعادة استخدام وسيلة التسجيل نفسها.",
+      "يمكنك إنشاء حساب جديد لاحقًا، مع مراعاة القيود الأمنية المعتمدة في يازين، ومنها إمكانية فرض فترة انتظار تصل إلى 3 أيام قبل إعادة استخدام وسيلة التسجيل نفسها.",
     ] },
     { title: "4. الألماس والعملات والمكافآت", body: [
       "لن يتم نقل الألماس أو العملات أو المزايا الافتراضية المتبقية إلى أي حساب جديد. ويُرجى استخدام الأرصدة غير القابلة للاسترداد قبل إتمام الحذف.",
@@ -54,7 +54,7 @@ const AR: Policy = {
     "فهم أن الحساب المحذوف لا يمكن استعادته بعد اكتمال الحذف.",
   ],
   warnTitle: "تنبيه مهم",
-  warn: "حذف الحساب إجراء نهائي. بعد اكتماله، لن تتمكن من استرجاع هويتك السابقة داخل ORIO أو مستوياتك أو المزايا المرتبطة بحسابك.",
+  warn: "حذف الحساب إجراء نهائي. بعد اكتماله، لن تتمكن من استرجاع هويتك السابقة داخل يازين أو مستوياتك أو المزايا المرتبطة بحسابك.",
   question: "هل أنت متأكد من رغبتك في المتابعة؟",
   cancel: "إلغاء والعودة",
   cont: "متابعة حذف الحساب",
@@ -74,7 +74,7 @@ const EN: Policy = {
     { title: "2. Account and data removal", body: ["Your profile, account information, and its social connections will be permanently deleted, in accordance with the Privacy Policy and legal retention requirements. Other users will no longer be able to visit your deleted profile or contact you through it."] },
     { title: "3. Release of sign-in methods", body: [
       "Once the deletion is complete, your phone number, email address, and the sign-in methods linked to the account will be unlinked, where applicable.",
-      "You may create a new account later, subject to ORIO's security restrictions, which may include a waiting period of up to 3 days before the same sign-in method can be reused.",
+      "You may create a new account later, subject to Yazeen's security restrictions, which may include a waiting period of up to 3 days before the same sign-in method can be reused.",
     ] },
     { title: "4. Diamonds, coins and rewards", body: [
       "Remaining diamonds, coins, and virtual benefits will not be transferred to any new account. Please use any non-refundable balances before the deletion is completed.",
@@ -94,7 +94,7 @@ const EN: Policy = {
     "You understand that a deleted account cannot be recovered once the deletion is complete.",
   ],
   warnTitle: "Important notice",
-  warn: "Deleting your account is a permanent action. Once it is complete, you will not be able to recover your previous identity within ORIO, your levels, or the benefits linked to your account.",
+  warn: "Deleting your account is a permanent action. Once it is complete, you will not be able to recover your previous identity within Yazeen, your levels, or the benefits linked to your account.",
   question: "Are you sure you want to continue?",
   cancel: "Cancel and Return",
   cont: "Continue Account Deletion",
