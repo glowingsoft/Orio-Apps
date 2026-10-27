@@ -35,7 +35,7 @@ import {
   type AuthProviders,
 } from "./api";
 import { queryClient } from "./query-client";
-import { getGoogleIdTokenWeb, GoogleSignInError } from "./auth/googleWeb";
+import { getGoogleIdToken, GoogleSignInError } from "./auth/googleSignIn";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -356,13 +356,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [user],
   );
 
-  // Google Sign-In: web uses Firebase (popup → ID token → /auth/google/firebase).
-  // Native Google Sign-In is not implemented yet; the native module throws a clear message.
+  // Google Sign-In → Firebase ID token → /auth/google/firebase. Web uses the Firebase
+  // popup (googleSignIn.web.ts); Android/iOS use native Google Sign-In (googleSignIn.ts).
   // Cancelling the popup resolves quietly; other failures throw a user-facing message.
   const signInWithGoogle = useCallback(async () => {
     let idToken: string;
     try {
-      idToken = await getGoogleIdTokenWeb();
+      idToken = await getGoogleIdToken();
     } catch (e: any) {
       if (e instanceof GoogleSignInError && e.code === "cancelled") return;
       throw e;
