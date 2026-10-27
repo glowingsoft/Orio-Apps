@@ -5361,6 +5361,10 @@ def _verify_firebase_google_token(token: str) -> dict:
         raise HTTPException(503, "Google sign-in is temporarily unavailable")
     except (_fb_auth.InvalidIdTokenError, ValueError):
         raise HTTPException(401, "Invalid Google sign-in token")
+    except Exception as e:
+
+        logger.warning("Firebase ID token rejected (%s)", type(e).__name__)
+        raise HTTPException(401, "Invalid Google sign-in token")
     if claims.get("aud") != FIREBASE_PROJECT_ID:
         raise HTTPException(401, "Invalid Google sign-in token")
     if (claims.get("firebase") or {}).get("sign_in_provider") != "google.com":

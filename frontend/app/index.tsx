@@ -13,8 +13,7 @@ import { useI18n } from "@/src/i18n";
 import { spacing } from "@/src/theme";
 import { TopPurpleGlow } from "@/src/components/TopPurpleGlow";
 
-const LOGO_URL =
-  "https://customer-assets-jai6qajn.emergentagent.net/job_audio-community-9/artifacts/sfgy7e9a_file_00000000bb1c81f5a0ea217fa46f828f.png";
+const LOGO = require("../assets/images/orio-toast-logo.png");
 
 export default function Index() {
   useAuth();
@@ -34,7 +33,7 @@ export default function Index() {
       {/* Centered brand lockup */}
       <View style={styles.content}>
         <View style={styles.logoHalo}>
-          <Image source={LOGO_URL} style={styles.logo} contentFit="contain" />
+          <Image source={LOGO} style={styles.logo} contentFit="contain" />
         </View>
         <Text style={[styles.wordmark, isRTL && { marginTop: spacing.xl + 4 }]}>{t.orioBrand}</Text>
         <Text style={[styles.tagline, isRTL && { marginTop: spacing.lg, lineHeight: 24 }]}>{t.voiceChatPartyGames}</Text>

@@ -1,6 +1,4 @@
-/**
- * Iter-117 — curated post hashtags + post media rendering.
- */
+
 import React, { useState } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet, useWindowDimensions, Modal, FlatList } from "react-native";
 import Icon from "@react-native-vector-icons/ionicons";

@@ -186,7 +186,9 @@ function RainbowName({ text, style, numberOfLines, ...rest }: { text: string } &
           </Text>
         }
       >
-        <Animated.View style={[{ width: GRAD_W, height: "100%" }, animatedStyle]}>
+        {/* Let the text establish height. A percentage height here can expand
+            an unconstrained native header row dramatically on Android. */}
+        <Animated.View style={[{ width: GRAD_W }, animatedStyle]}>
           <LinearGradient
             colors={RAINBOW as any}
             start={{ x: 0, y: 0 }}

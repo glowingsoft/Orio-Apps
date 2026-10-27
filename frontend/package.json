@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "preinstall": "node ./scripts/cmd-guard.js --preinstall",
+    "postinstall": "node ./scripts/patch-android-native-cmake.js",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
@@ -14,7 +15,7 @@
   "dependencies": {
     "@expo/metro-runtime": "57.0.17",
     "@gorhom/bottom-sheet": "5.2.14",
-    "@lottiefiles/dotlottie-react": "0.20.0",
+    "@lottiefiles/dotlottie-react": "0.13.5",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "12.0.1",
     "@react-native-community/slider": "5.2.0",
@@ -45,7 +46,7 @@
     "expo-linear-gradient": "57.0.2",
     "expo-linking": "57.0.13",
     "expo-media-library": "~57.0.5",
-    "expo-notifications": "57.0.23",
+    "expo-notifications": "~57.0.24",
     "expo-router": "57.0.29",
     "expo-secure-store": "57.0.4",
     "expo-splash-screen": "57.0.10",

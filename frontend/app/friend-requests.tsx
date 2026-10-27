@@ -49,10 +49,12 @@ export default function FriendRequests() {
               <Pressable onPress={() => router.push(`/user/${item.user.id}` as any)}>
                 <Image source={item.user.avatar_url} style={styles.avatar} />
               </Pressable>
-              <View style={{ flex: 1 }}>
+              <View style={styles.userInfo}>
                 <View style={styles.nameRow}>
-                  <VipName style={styles.name} numberOfLines={1} name={item.user?.nickname} color={(item.user as any)?.name_color} vipLevel={(item.user as any)?.vip_level} />
-                  {item.user.vip_level > 0 && <VipBadge level={item.user.vip_level} />}
+                  <View style={styles.nameClip}>
+                    <VipName style={styles.name} numberOfLines={1} name={item.user?.nickname} color={(item.user as any)?.name_color} vipLevel={(item.user as any)?.vip_level} />
+                  </View>
+                  {item.user.vip_level > 0 && <VipBadge level={item.user.vip_level} style={styles.vipBadge} />}
                 </View>
                 <Text style={styles.sub}>
                   {item.source === "request" ? (ar ? "يريد أن يصبح صديقك" : "Wants to be your friend") : (ar ? "يتابعك" : "Follows you")}
@@ -88,10 +90,13 @@ const styles = StyleSheet.create({
   empty: { color: colors.muted, fontSize: 14, textAlign: "center" },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.surfaceSecondary, padding: spacing.md, borderRadius: radius.md },
   avatar: { width: 48, height: 48, borderRadius: 24 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  userInfo: { flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 4, minWidth: 0 },
+  nameClip: { flexShrink: 1, minWidth: 0, overflow: "hidden" },
+  vipBadge: { flexShrink: 0 },
   name: { color: colors.onSurface, fontSize: 15, fontWeight: "700", flexShrink: 1 },
   sub: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  btn: { paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill, minHeight: 36, justifyContent: "center" },
+  btn: { flexShrink: 0, paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill, minHeight: 36, justifyContent: "center" },
   acceptBtn: { backgroundColor: colors.gold },
   acceptText: { color: colors.onBrandPrimary, fontWeight: "800", fontSize: 12 },
   rejectBtn: { backgroundColor: colors.error + "22", borderWidth: 1, borderColor: colors.error },

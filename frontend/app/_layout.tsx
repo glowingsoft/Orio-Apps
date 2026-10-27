@@ -55,7 +55,6 @@ if (Notifications && Platform.OS === "android") {
   Notifications.setNotificationChannelAsync("default", {
     name: "Default",
     importance: Notifications.AndroidImportance.MAX,
-    sound: "default",
   });
 }
 

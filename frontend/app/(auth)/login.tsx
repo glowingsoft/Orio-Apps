@@ -13,8 +13,7 @@ import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/components/Toast";
 import { spacing, radius, colors } from "@/src/theme";
 
-// Uploaded ORIO O logo (official identity)
-const LOGO_URL = "https://customer-assets-jai6qajn.emergentagent.net/job_audio-community-9/artifacts/sfgy7e9a_file_00000000bb1c81f5a0ea217fa46f828f.png";
+const LOGO = require("../../assets/images/orio-toast-logo.png");
 
 // Extract a Facebook access_token from an OAuth redirect URL (implicit flow).
 function extractFbAccessToken(url: string | null | undefined): string | null {
@@ -183,7 +182,7 @@ export default function Login() {
           <View style={{ alignItems: "center", marginBottom: spacing.md }}>
             <View style={styles.logoContainer}>
               <View style={styles.logoInnerGlow} pointerEvents="none" />
-              <Image source={LOGO_URL} style={styles.logoImg} contentFit="contain" />
+              <Image source={LOGO} style={styles.logoImg} contentFit="contain" />
             </View>
             {/* ORIO wordmark — LARGER than the O logo */}
             <Text style={styles.wordmark} accessibilityRole="header">YAZEEN</Text>
