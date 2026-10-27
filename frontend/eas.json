@@ -1,30 +1,19 @@
 {
   "cli": { "version": ">= 12.0.0" },
   "build": {
-    "base": {
-      "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://aazabex.com",
-        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAq9CuzG8jAItRDczA6cF9jH1FVi-kSuw4",
-        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "aazabex.com",
-        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "orio-4d359",
-        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "orio-4d359.firebasestorage.app",
-        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "531563533701",
-        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:531563533701:web:724ca845db56b938eca0ec",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "531563533701-o3ui6kk44g7uf16ecqapr6344eouubjn.apps.googleusercontent.com"
-      }
-    },
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "environment": "development",
       "android": { "buildType": "apk" }
     },
     "preview": {
-      "extends": "base",
       "distribution": "internal",
+      "environment": "preview",
       "android": { "buildType": "apk" }
     },
     "production": {
-      "extends": "base"
+      "environment": "production"
     }
   }
 }

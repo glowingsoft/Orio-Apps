@@ -89,3 +89,7 @@ credentials.json
 
 # Local Google service account key
 /backend/service-account.json
+
+# Firebase app config files: on EAS builds they come from secret file variables
+/frontend/google-services.json
+/frontend/GoogleService-Info.plist
