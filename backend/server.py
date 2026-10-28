@@ -5613,7 +5613,13 @@ async def _call_pub(db, c: dict, me: str) -> dict:
         "id": str(c["_id"]), "status": c["status"], "channel": c["channel"],
         "direction": "outgoing" if c["caller_id"] == me else "incoming",
         "caller_id": c["caller_id"], "callee_id": c["callee_id"],
-        "accepted_at": c["accepted_at"].isoformat() if isinstance(c.get("accepted_at"), datetime) else None,
+
+        "accepted_at": _aware(c["accepted_at"]).isoformat() if isinstance(c.get("accepted_at"), datetime) else None,
+        # Set once both sides are in the voice channel; until then clients show "Connecting…".
+        "connected_at": _aware(c["connected_at"]).isoformat() if isinstance(c.get("connected_at"), datetime) else None,
+        # Seconds since the call connected, by the server clock (clients count on from it).
+        "elapsed_s": max(0, int((now_utc() - _aware(c["connected_at"])).total_seconds()))
+                     if isinstance(c.get("connected_at"), datetime) else None,
         "peer": {"id": other_id, "nickname": (o or {}).get("nickname"), "avatar_url": (o or {}).get("avatar_url"),
                  "vip_level": int((o or {}).get("vip_level", 0) or 0)},
     }
@@ -5629,7 +5635,9 @@ async def _flush_call_logs(db) -> None:
         if not c:
             return
         acc, end = _aware(c.get("accepted_at")), _aware(c.get("ended_at")) or now_utc()
-        dur = int(max(0, (end - acc).total_seconds())) if acc else 0
+        # Duration counts from when both sides were connected (older calls: from accept).
+        start = _aware(c.get("connected_at")) or (acc if not c.get("connect_tracked") else None)
+        dur = int(max(0, (end - start).total_seconds())) if start else 0
         answered = bool(acc)
         await db.messages.insert_one({
             "sender_id": c["caller_id"], "recipient_id": c["callee_id"],
@@ -5739,11 +5747,29 @@ async def _call_accept(call_id: str, user=Depends(current_user)):
         raise HTTPException(409, "CALLER_IN_ROOM" if _in_voice_room(me) else "CALLEE_IN_ROOM")
     res = await db.calls.find_one_and_update(
         {"_id": c["_id"], "status": "ringing", "created_at": {"$gte": now_utc() - timedelta(seconds=_CALL_RING_S)}},
-        {"$set": {"status": "accepted", "accepted_at": now_utc()}}, return_document=True)
+        {"$set": {"status": "accepted", "accepted_at": now_utc(), "connect_tracked": True}}, return_document=True)
     if not res:
         raise HTTPException(409, "CALL_NOT_RINGING")
     await _push_users([c["caller_id"], c["callee_id"]], "call_update", call_id=call_id)
     return {"call": await _call_pub(db, res, me), "rtc": _call_token(res["channel"], me)}
+
+
+@api.post("/calls/{call_id}/connected")
+async def _call_connected(call_id: str, user=Depends(current_user)):
+    """A participant reports it has joined the voice channel and can see the other
+    party there — i.e. both sides are connected. The first report sets connected_at
+    (idempotent); both sides then start the call timer from it."""
+    db = app.state.db
+    me = str(user["_id"])
+    c = await _get_my_call(db, call_id, me)
+    if c["status"] != "accepted":
+        raise HTTPException(409, "CALL_NOT_ACTIVE")
+    res = await db.calls.find_one_and_update(
+        {"_id": c["_id"], "status": "accepted", "connected_at": {"$exists": False}},
+        {"$set": {"connected_at": now_utc()}}, return_document=True)
+    if res:
+        await _push_users([c["caller_id"], c["callee_id"]], "call_update", call_id=call_id)
+    return {"call": await _call_pub(db, res or await db.calls.find_one({"_id": c["_id"]}), me)}
 
 
 @api.post("/calls/{call_id}/token")

@@ -941,6 +941,10 @@ export type CallInfo = {
   channel: string;
   direction: "incoming" | "outgoing";
   accepted_at: string | null;
+  /** Set once both sides are in the voice channel; null while connecting. */
+  connected_at?: string | null;
+  /** Seconds since the call connected, by the server clock. */
+  elapsed_s?: number | null;
   peer: {
     id: string;
     nickname?: string;
@@ -961,6 +965,9 @@ export async function apiCallAccept(id: string) {
   return request<{ call: CallInfo; rtc: CallRtc }>(`/calls/${id}/accept`, {
     method: "POST",
   });
+}
+export async function apiCallConnected(id: string) {
+  return request<{ call: CallInfo }>(`/calls/${id}/connected`, { method: "POST" });
 }
 export async function apiCallEnd(id: string) {
   return request<any>(`/calls/${id}/end`, { method: "POST" });

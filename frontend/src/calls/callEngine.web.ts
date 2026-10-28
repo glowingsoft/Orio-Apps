@@ -35,17 +35,26 @@ export async function joinCall(rtc: CallRtc, ev: {
   });
   client.on("connection-state-change", (cur: string, prev: string, reason?: string) => console.log("[call] state", prev, "->", cur, reason || ""));
   client.on("exception", (e: any) => console.warn("[call] exception", e?.code, e?.msg));
-  client.on("user-joined", (u: any) => console.log("[call] peer joined", u.uid));
+  client.on("user-joined", (u: any) => { console.log("[call] peer joined", u.uid); ev.onPeerJoined(); });
   try { (AgoraRTC as any).onAutoplayFailed = () => console.warn("[call] autoplay blocked: click the page to hear audio"); } catch {}
   client.on("user-left", () => ev.onPeerLeft());
   client.on("token-privilege-will-expire", () => ev.onTokenWillExpire());
+  const joining = client;
   try {
     await client.join(rtc.app_id, rtc.channel, rtc.token, rtc.uid);
   } catch (e: any) {
+    // leaveCall() during join (call ended / hung up) aborts it with WS_ABORT or
+    // OPERATION_ABORTED — that is expected, not a connection failure.
+    if (client !== joining || e?.code === "WS_ABORT" || e?.code === "OPERATION_ABORTED") {
+      console.log("[call] join cancelled because the call was left", e?.code || "");
+      return;
+    }
     console.warn("[call] Agora join failed", e?.code, e?.message || e);
     ev.onError(`join:${e?.code || ""} ${e?.message || e}`);
     return;
   }
+  if (client !== joining) { try { await joining.leave(); } catch {} return; }
+  if ((client.remoteUsers || []).length) ev.onPeerJoined();
   // Users already in the channel before we joined: subscribe to their audio.
   for (const u of client.remoteUsers || []) {
     if (u.hasAudio) {

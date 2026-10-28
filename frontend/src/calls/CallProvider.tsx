@@ -1,17 +1,11 @@
-/**
- * Iter-134 — one-to-one voice calls: incoming ringing, accept/reject,
- * outgoing ringing/cancel, in-call mic + speaker controls, hang-up, cleanup.
- * The backend is the source of truth (status pushed via the realtime socket,
- * polled every 2s only while a call is active) and enforces
- * the "no calls while inside a voice room" rule.
- */
+
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Modal, View, Text, Pressable, StyleSheet, PanResponder, Animated, useWindowDimensions, AppState } from "react-native";
 import { Image } from "expo-image";
 import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { apiCallAccept, apiCallCurrent, apiCallEnd, apiCallStart, apiCallToken, CallInfo, CallRtc } from "@/src/api";
+import { apiCallAccept, apiCallConnected, apiCallCurrent, apiCallEnd, apiCallStart, apiCallToken, CallInfo, CallRtc } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/components/Toast";
@@ -20,6 +14,7 @@ import { colors, spacing } from "@/src/theme";
 import { VipName } from "@/src/components/VipName";
 import { joinCall, leaveCall, renewCallToken, setCallMuted, setCallSpeaker } from "@/src/calls/callEngine";
 import { isRealtimeConnected, onRealtime } from "@/src/realtime";
+import { parseServerTime } from "@/src/utils/serverTime";
 
 export const CALL_IN_ROOM_AR = "لا يمكنك إجراء مكالمة خاصة أثناء وجودك داخل غرفة صوتية.";
 export const CALL_IN_ROOM_EN = "You cannot make a private call while inside a voice room.";
@@ -44,6 +39,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const tickRef = useRef<() => void>(() => {});
   const rtcRef = useRef<CallRtc | null>(null);
   const joinedRef = useRef<string | null>(null);
+  // Call id for which this device has seen the other party in the voice channel.
+  const peerSeenRef = useRef<string | null>(null);
+  // Fallback when the server has no /connected endpoint: local connect time.
+  const localConnectedRef = useRef<{ id: string; at: number } | null>(null);
+  const [localConnectedId, setLocalConnectedId] = useState<string | null>(null);
   const callRef = useRef<CallInfo | null>(null);
   useEffect(() => { callRef.current = call; }, [call]);
   const ring = useAudioPlayer(require("../../assets/sounds/ringtone.wav"));
@@ -56,9 +56,30 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     console.trace("[call] cleanup()");
     leaveCall();
     joinedRef.current = null;
+    peerSeenRef.current = null;
+    localConnectedRef.current = null;
+    setLocalConnectedId(null);
     rtcRef.current = null;
     setMuted(false); setSpeaker(false); setElapsed(0); setMinimized(false);
     setCall(null);
+  }, []);
+
+  // Both sides are in the channel → tell the server, which sets connected_at once
+  // and pushes it to both devices so their timers start together.
+  const reportConnected = useCallback(async (id: string) => {
+    peerSeenRef.current = id;
+    if (localConnectedRef.current?.id === id) return;
+    try {
+      const r = await apiCallConnected(id);
+      if (callRef.current?.id === id) setCall(r.call);
+    } catch (e: any) {
+      // Older backend without /connected (route 404 "Not Found", unlike "Call not
+      // found"): start the timer locally from when the peer joined.
+      if (e?.status === 404 && e?.message === "Not Found") {
+        localConnectedRef.current = { id, at: Date.now() };
+        setLocalConnectedId(id);
+      }
+    }
   }, []);
 
   const join = useCallback(async (c: CallInfo, rtc: CallRtc) => {
@@ -66,7 +87,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     joinedRef.current = c.id;
     try { await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true }); } catch {}
     await joinCall(rtc, {
-      onPeerJoined: () => {},
+      onPeerJoined: () => { reportConnected(c.id); },
       // Peer dropped from the RTC channel → re-check the server right away.
       onPeerLeft: () => tickRef.current(),
       onError: (m) => {
@@ -75,15 +96,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       },
       onTokenWillExpire: async () => { try { const t = await apiCallToken(c.id); renewCallToken(t.token); } catch {} },
     });
-  }, [ar, toast]);
+  }, [ar, toast, reportConnected]);
 
-  // Server-authoritative polling (ringing, accepted, ended by the peer).
   useEffect(() => {
     if (!user?.id) return;
     let stop = false;
     const tick = async () => {
-      // Presence: only poll (= heartbeat that lets calls ring) while ORIO is in
-      // the foreground; an ongoing call keeps syncing in the background.
+
       if (AppState.currentState !== "active" && !callRef.current) return;
       try {
         const { call: srv, last } = await apiCallCurrent() as any;
@@ -106,12 +125,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         if (local && local.id !== srv.id) cleanup();
         setCall(srv);
         if (srv.status === "accepted" && rtcRef.current && joinedRef.current !== srv.id) join(srv, rtcRef.current);
+        if (srv.status === "accepted" && !srv.connected_at && peerSeenRef.current === srv.id) reportConnected(srv.id);
       } catch {}
     };
     tickRef.current = tick;
     tick();
-    // Calls are pushed over the realtime socket; poll fast only while a call is
-    // in progress (ring timeout / peer-left detection), slowly otherwise.
+
     let timer: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
       const delay = callRef.current ? 2000 : isRealtimeConnected() ? 30_000 : 1500;
@@ -124,7 +143,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       tick().finally(() => { if (!stop) schedule(); });
     });
     return () => { stop = true; if (timer) clearTimeout(timer); off(); };
-  }, [user?.id, cleanup, join]);
+  }, [user?.id, cleanup, join, reportConnected]);
 
   // Entering a voice room terminates the private call (server also enforces it).
   useEffect(() => {
@@ -142,13 +161,34 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [ringing, call?.direction, ring]);
 
-  // Call timer.
+  // Call timer: starts once both sides are connected (server connected_at, or the
+  // local fallback), counting from the server's elapsed seconds so a wrong device
+  // clock doesn't matter; stable per call, re-synced only on >2 s drift.
+  const connected = call?.status === "accepted" && (!!call.connected_at || localConnectedId === call.id);
+  const timerStartRef = useRef<{ id: string; at: number } | null>(null);
   useEffect(() => {
-    if (call?.status !== "accepted") return;
-    const start = call.accepted_at ? new Date(call.accepted_at).getTime() : Date.now();
-    const iv = setInterval(() => setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000))), 1000);
+    if (!call || call.status !== "accepted") { timerStartRef.current = null; return; }
+    if (!call.connected_at) {
+      const local = localConnectedRef.current;
+      timerStartRef.current = local?.id === call.id ? local : null;
+      return;
+    }
+    const fromServer = typeof call.elapsed_s === "number" ? Date.now() - call.elapsed_s * 1000 : null;
+    const prev = timerStartRef.current?.id === call.id ? timerStartRef.current.at : null;
+    let at = prev ?? fromServer ?? parseServerTime(call.connected_at) ?? Date.now();
+    if (prev != null && fromServer != null && Math.abs(prev - fromServer) > 2000) at = fromServer;
+    timerStartRef.current = { id: call.id, at };
+  }, [call, localConnectedId]);
+  useEffect(() => {
+    if (!connected) return;
+    const update = () => {
+      const s = timerStartRef.current;
+      setElapsed(s ? Math.max(0, Math.floor((Date.now() - s.at) / 1000)) : 0);
+    };
+    update();
+    const iv = setInterval(update, 1000);
     return () => clearInterval(iv);
-  }, [call?.status, call?.accepted_at]);
+  }, [connected, call?.id]);
 
   const startCall = useCallback(async (peerId: string) => {
     if (session.roomId) { toast.show({ kind: "error", message: blockedMsg }); return; }
@@ -192,10 +232,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     <CallCtx.Provider value={{ startCall, active: !!call }}>
       {children}
       {call && minimized && call.status === "accepted" && (
-        <MiniCall call={call} elapsed={elapsed} muted={muted} onExpand={() => setMinimized(false)} onHangup={hangup} />
+        <MiniCall call={call} ar={ar} connected={connected} elapsed={elapsed} muted={muted} onExpand={() => setMinimized(false)} onHangup={hangup} />
       )}
       {call && !(minimized && call.status === "accepted") && (
-        <CallScreen call={call} ar={ar} muted={muted} speaker={speaker} elapsed={elapsed}
+        <CallScreen call={call} ar={ar} connected={connected} muted={muted} speaker={speaker} elapsed={elapsed}
           onAccept={accept} onHangup={hangup} onMinimize={() => setMinimized(true)}
           onMute={() => { setCallMuted(!muted); setMuted(!muted); }}
           onSpeaker={() => { setCallSpeaker(!speaker); setSpeaker(!speaker); }} />
@@ -207,8 +247,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 function fmt(s: number) { return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; }
 
 /** Floating mini call window — draggable, stays above every ORIO screen. */
-function MiniCall({ call, elapsed, muted, onExpand, onHangup }: {
-  call: CallInfo; elapsed: number; muted: boolean; onExpand: () => void; onHangup: () => void;
+function MiniCall({ call, ar, connected, elapsed, muted, onExpand, onHangup }: {
+  call: CallInfo; ar: boolean; connected: boolean; elapsed: number; muted: boolean; onExpand: () => void; onHangup: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -233,7 +273,7 @@ function MiniCall({ call, elapsed, muted, onExpand, onHangup }: {
           <VipName style={styles.miniName} numberOfLines={1} name={call.peer.nickname || "Yazeen"} color={(call.peer as any).name_color} vipLevel={(call.peer as any).vip_level} />
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <Icon name={muted ? "mic-off" : "mic"} size={11} color={colors.success} />
-            <Text style={styles.miniTime} testID="call-mini-time">{fmt(elapsed)}</Text>
+            <Text style={styles.miniTime} testID="call-mini-time">{connected ? fmt(elapsed) : (ar ? "جارٍ التوصيل…" : "Connecting…")}</Text>
           </View>
         </View>
       </Pressable>
@@ -244,13 +284,13 @@ function MiniCall({ call, elapsed, muted, onExpand, onHangup }: {
   );
 }
 
-function CallScreen({ call, ar, muted, speaker, elapsed, onAccept, onHangup, onMute, onSpeaker, onMinimize }: {
-  call: CallInfo; ar: boolean; muted: boolean; speaker: boolean; elapsed: number;
+function CallScreen({ call, ar, connected, muted, speaker, elapsed, onAccept, onHangup, onMute, onSpeaker, onMinimize }: {
+  call: CallInfo; ar: boolean; connected: boolean; muted: boolean; speaker: boolean; elapsed: number;
   onAccept: () => void; onHangup: () => void; onMute: () => void; onSpeaker: () => void; onMinimize: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const incoming = call.direction === "incoming" && call.status === "ringing";
-  const status = call.status === "accepted" ? fmt(elapsed)
+  const status = call.status === "accepted" ? (connected ? fmt(elapsed) : (ar ? "جارٍ التوصيل…" : "Connecting…"))
     : incoming ? (ar ? "مكالمة صوتية واردة…" : "Incoming voice call…")
     : (ar ? "جارٍ الاتصال…" : "Calling…");
   return (

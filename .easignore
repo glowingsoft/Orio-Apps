@@ -1,0 +1,34 @@
+# EAS uses this file INSTEAD of .gitignore when archiving the repo for a build.
+# Only frontend/ is needed to build the app.
+
+# Not part of the app build (backend/ also holds venv/ and the Firebase private key)
+/backend/
+/docs/
+/deploy/
+/memory/
+/tests/
+/.github/
+/.emergent/
+test_result.md
+design_guidelines.json
+
+# Dependencies, native and build output (EAS installs/generates these itself)
+node_modules/
+android/
+ios/
+.expo/
+.metro-cache/
+dist/
+dist-*/
+web-build/
+.eas-archive*/
+.eas-archive-check*/
+__pycache__/
+venv/
+
+# Logs and local secrets
+*.log
+.env
+.env.*
+!.env.example
+service-account.json
