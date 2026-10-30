@@ -138,18 +138,17 @@ function RainbowName({ text, style, numberOfLines, ...rest }: { text: string } &
         numberOfLines={numberOfLines}
         style={[
           style,
+          // RN Web passes these CSS properties through (web-only, so not in TextStyle).
           {
-            // RN Web passes these CSS properties through.
             // Iter-120 — glossy white→dark shine layered over the rainbow.
             backgroundImage: `linear-gradient(100deg, rgba(255,255,255,0) 35%, rgba(255,255,255,0.95) 46%, rgba(25,25,35,0.55) 54%, rgba(255,255,255,0) 65%), linear-gradient(90deg, ${RAINBOW.join(", ")})`,
-            // @ts-expect-error
             WebkitBackgroundClip: "text",
             backgroundClip: "text",
             color: "transparent",
             backgroundSize: "300% 100%, 200% 100%",
             backgroundRepeat: "no-repeat, repeat",
             animation: "orio-rainbow-shine 2.8s linear infinite",
-          },
+          } as any,
         ]}
       >
         {text}
