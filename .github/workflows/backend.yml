@@ -43,15 +43,10 @@ jobs:
         working-directory: backend
     services:
       # Temporary MongoDB for this CI run only (database orio_ci) — never the production database.
-      # The health check makes GitHub wait until it accepts connections before the steps start.
+      # Readiness is checked in the "Wait for CI MongoDB" step (no Docker health-check options).
       mongo:
         image: mongo:8.0
         ports: ["27017:27017"]
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     env:
       MONGO_URL: mongodb://localhost:27017
       DB_NAME: orio_ci
@@ -67,6 +62,22 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Wait for CI MongoDB
+        run: |
+          python - <<'PY'
+          import sys, time
+          from pymongo import MongoClient
+          for attempt in range(60):
+              try:
+                  MongoClient("mongodb://localhost:27017", serverSelectionTimeoutMS=2000).admin.command("ping")
+                  print(f"CI MongoDB ready after {attempt * 2}s")
+                  sys.exit(0)
+              except Exception as e:
+                  last = e
+                  time.sleep(2)
+          print(f"CI MongoDB did not become ready: {last}")
+          sys.exit(1)
+          PY
       - name: Compile check
         run: python -m py_compile server.py admin_dashboard.py admin_phase1.py account_deletion.py moderation.py push.py
       - name: Backend starts and is healthy
