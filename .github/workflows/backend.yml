@@ -104,6 +104,14 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+      # TEMPORARY — prints the claims of the real OIDC token AWS receives (never the token itself).
+      - name: Debug GitHub OIDC claims
+        run: |
+          echo "Role ARN set: $([ -n "${{ vars.AWS_DEPLOY_ROLE_ARN }}" ] && echo yes || echo NO)"
+          echo "Region: ${{ vars.AWS_REGION }}"
+          curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" \
+          | python3 -c "import sys,json,base64; t=json.load(sys.stdin)['value']; p=t.split('.')[1]; c=json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4))); [print(f'{k}: {c.get(k)}') for k in ('sub','aud','iss','repository','environment','ref','job_workflow_ref')]"
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
