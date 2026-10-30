@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, useFocusEffect } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useCallback } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -44,7 +45,7 @@ export default function TasksScreen() {
     <View style={styles.container} testID="tasks-screen">
       <LinearGradient colors={[colors.purpleDeep, colors.surface]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.5 }} />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="tasks-back">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="tasks-back">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{lang === "ar" ? "المهام اليومية" : "Daily Tasks"}</Text>

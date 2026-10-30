@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -36,7 +37,7 @@ export default function EditPayoutMethodScreen() {
 
   const save = useMutation({
     mutationFn: () => apiEditPayoutMethod(id!, values),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["payout", "methods"] }); router.back(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["payout", "methods"] }); safeBack(router); },
     onError: (e: Error) => setErr(e instanceof ApiError ? e.message : "Failed"),
   });
 

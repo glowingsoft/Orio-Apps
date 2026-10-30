@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, TextInput, ActivityIndicator, Modal } from "react-native";
-import { Image } from "expo-image";
+import { View, Text, StyleSheet, FlatList, Pressable, TextInput, ActivityIndicator, Modal, Alert } from "react-native";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -10,6 +10,7 @@ import { colors, spacing, radius } from "@/src/theme";
 import { FoluCoin } from "@/src/components/FoluCoin";
 import { Diamond } from "@/src/components/Diamond";
 import { useAuth } from "@/src/auth-context";
+import { FamilyLogo } from "@/src/families/FamilyLogo";
 
 export default function FamiliesList() {
   const insets = useSafeAreaInsets();
@@ -26,6 +27,7 @@ export default function FamiliesList() {
   const { data: mine = [] } = useQuery({ queryKey: ["families-mine"], queryFn: apiFamiliesMine });
 
   const list = tab === "all" ? all : mine;
+  const myIds = new Set((mine as any[]).map((f) => f.id));
 
   const create = useMutation({
     mutationFn: () => apiFamilyCreate({ name: name.trim(), description: desc.trim() }),
@@ -34,13 +36,18 @@ export default function FamiliesList() {
   });
   const join = useMutation({
     mutationFn: (id: string) => apiFamilyJoin(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["families-mine"] }); },
+    onSuccess: (_r, id) => {
+      qc.invalidateQueries({ queryKey: ["families-mine"] });
+      qc.invalidateQueries({ queryKey: ["families"] });
+      qc.invalidateQueries({ queryKey: ["family", id] });
+    },
+    onError: (e: any) => Alert.alert("Couldn't join", e?.message || "Please try again"),
   });
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]} testID="families-screen">
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="back-btn">
           <Icon name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>Families</Text>
@@ -71,7 +78,7 @@ export default function FamiliesList() {
         )}
         renderItem={({ item }) => (
           <Pressable testID={`family-${item.id}`} onPress={() => router.push(`/families/${item.id}`)} style={styles.row}>
-            <Image source={item.logo_url} style={styles.logo} />
+            <FamilyLogo uri={item.logo_url} name={item.name} size={56} radius={12} />
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{item.name}</Text>
               <Text style={styles.sub} numberOfLines={1}>{item.description || "No description"}</Text>
@@ -80,11 +87,23 @@ export default function FamiliesList() {
                 <Text style={styles.meta}>{item.members_count} members</Text>
               </View>
             </View>
-            {tab === "all" && (
-              <Pressable testID={`join-${item.id}`} onPress={() => join.mutate(item.id)} style={styles.joinBtn}>
-                <Text style={styles.joinText}>Join</Text>
+            {tab === "all" && (myIds.has(item.id) ? (
+              <View testID={`joined-${item.id}`} style={styles.joinedBadge}>
+                <Icon name="checkmark" size={12} color={colors.brandPrimary} />
+                <Text style={styles.joinedText}>Joined</Text>
+              </View>
+            ) : (
+              <Pressable
+                testID={`join-${item.id}`}
+                onPress={() => join.mutate(item.id)}
+                disabled={join.isPending}
+                style={[styles.joinBtn, join.isPending && join.variables === item.id && { opacity: 0.6 }]}
+              >
+                {join.isPending && join.variables === item.id
+                  ? <ActivityIndicator size="small" color={colors.onBrandPrimary} />
+                  : <Text style={styles.joinText}>Join</Text>}
               </Pressable>
-            )}
+            ))}
           </Pressable>
         )}
       />
@@ -133,6 +152,8 @@ const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: 11 },
   joinBtn: { backgroundColor: colors.purple, paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill },
   joinText: { color: "#FFF", fontWeight: "800", fontSize: 12 },
+  joinedBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.brandPrimary },
+  joinedText: { color: colors.brandPrimary, fontWeight: "800", fontSize: 12 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
   modal: { backgroundColor: colors.surfaceSecondary, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg },
   dragHandle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: spacing.md },

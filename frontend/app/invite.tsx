@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, Pressable, Share, ActivityIndicator, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
@@ -63,7 +64,7 @@ export default function Invite() {
     <View style={styles.container} testID="invite-screen">
       <LinearGradient colors={[colors.purple, colors.purpleDeep, colors.surface]} style={StyleSheet.absoluteFill} />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="back-btn">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color="#FFF" />
         </Pressable>
         <Text style={styles.title}>{t.inviteFriendsTitle}</Text>

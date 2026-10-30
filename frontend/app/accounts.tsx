@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -45,7 +46,7 @@ export default function Accounts() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]} testID="accounts-screen">
       <View style={[styles.header, { flexDirection: "row" }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="back-btn">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{t.switchAccount || "Switch Account"}</Text>

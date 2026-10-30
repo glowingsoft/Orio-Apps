@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import * as ImagePicker from "expo-image-picker";
@@ -139,7 +140,7 @@ export default function CreateRoom() {
     >
       <TopPurpleGlow />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, flexDirection: "row" }]}>
-        <Pressable testID="back-btn" onPress={() => router.back()} style={styles.iconBtn}>
+        <Pressable testID="back-btn" onPress={() => safeBack(router)} style={styles.iconBtn}>
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{t.title}</Text>

@@ -174,7 +174,9 @@ function GiftVideo({ uri, onEnd }: { uri: string; onEnd: () => void }) {
     return () => { sub.remove(); err.remove(); };
   }, [player, onEnd]);
   return (
-    <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} testID="gift-fx-video" />
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <VideoView player={player} style={{ width: "100%", height: "100%" }} contentFit="contain" nativeControls={false} testID="gift-fx-video" />
+    </View>
   );
 }
 

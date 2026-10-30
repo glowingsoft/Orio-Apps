@@ -1,8 +1,5 @@
-/**
- * Iter-117 — chunked uploads to Emergent Object Storage via the backend
- * (/api/media/upload/{init,chunk,complete}). Chunks are base64 JSON so the
- * same path works on web and native and stays under proxy body limits.
- */
+
+
 import { Platform } from "react-native";
 import { cropImage } from "@/src/media/ImageCropper";
 import * as ImagePicker from "expo-image-picker";
@@ -11,12 +8,23 @@ import { API_BASE, getAccessToken, tryRefresh } from "@/src/api";
 
 const RAW_CHUNK = 1_500_000; // bytes per chunk (≈2MB base64)
 
-export type PickedMedia = { uri: string; kind: "image" | "video"; mime: string; size: number; duration?: number | null };
+export type PickedMedia = {
+  uri: string;
+  kind: "image" | "video";
+  mime: string;
+  size: number;
+  duration?: number | null;
+};
 
-export async function pickMedia(kind: "image" | "video", limit = 1, crop = false): Promise<PickedMedia[] | "denied"> {
+export async function pickMedia(
+  kind: "image" | "video",
+  limit = 1,
+  crop = false,
+): Promise<PickedMedia[] | "denied"> {
   const perm = await ImagePicker.getMediaLibraryPermissionsAsync();
   let granted = perm.granted;
-  if (!granted && perm.canAskAgain !== false) granted = (await ImagePicker.requestMediaLibraryPermissionsAsync()).granted;
+  if (!granted && perm.canAskAgain !== false)
+    granted = (await ImagePicker.requestMediaLibraryPermissionsAsync()).granted;
   if (!granted) return "denied";
   const r = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: [kind === "image" ? "images" : "videos"],
@@ -27,13 +35,24 @@ export async function pickMedia(kind: "image" | "video", limit = 1, crop = false
   });
   if (r.canceled || !r.assets?.length) return [];
   if (kind === "image" && crop) {
-    // Iter-135 — let the user frame each photo; frame keeps the photo's own
-    // proportions (clamped 4:5 … 16:9) so nothing is cut unless they choose.
+
     const out: PickedMedia[] = [];
     for (const a of r.assets.slice(0, limit)) {
-      const ratio = a.width && a.height ? Math.min(16 / 9, Math.max(4 / 5, a.width / a.height)) : 1;
-      const c = await cropImage(a.uri, a.width, a.height, { aspect: [Math.round(ratio * 1000), 1000] });
-      if (c) out.push({ uri: c.uri, kind: "image", mime: c.mimeType, size: 0, duration: null });
+      const ratio =
+        a.width && a.height
+          ? Math.min(16 / 9, Math.max(4 / 5, a.width / a.height))
+          : 1;
+      const c = await cropImage(a.uri, a.width, a.height, {
+        aspect: [Math.round(ratio * 1000), 1000],
+      });
+      if (c)
+        out.push({
+          uri: c.uri,
+          kind: "image",
+          mime: c.mimeType,
+          size: 0,
+          duration: null,
+        });
     }
     return out;
   }
@@ -42,23 +61,72 @@ export async function pickMedia(kind: "image" | "video", limit = 1, crop = false
     kind,
     mime: a.mimeType || (kind === "image" ? "image/jpeg" : "video/mp4"),
     size: a.fileSize || 0,
-    // expo-image-picker reports duration in ms
-    duration: a.duration != null ? a.duration / 1000 : null,
+    duration: a.duration != null ? (Platform.OS === "web" ? a.duration : a.duration / 1000) : null,
   }));
 }
 
 async function post(path: string, body: any) {
-  const send = () => fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken() ?? ""}` },
-    body: JSON.stringify(body),
-  });
+  const send = () =>
+    fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getAccessToken() ?? ""}`,
+      },
+      body: JSON.stringify(body),
+    });
   let res = await send();
   if (res.status === 401 && (await tryRefresh())) res = await send();
   const txt = await res.text();
   let j: any = null;
-  try { j = txt ? JSON.parse(txt) : null; } catch { /* plain text */ }
-  if (!res.ok) throw new Error(j?.detail || txt || `Upload failed (${res.status})`);
+  try {
+    j = txt ? JSON.parse(txt) : null;
+  } catch {
+    /* plain text */
+  }
+  if (!res.ok)
+    throw new Error(j?.detail || txt || `Upload failed (${res.status})`);
+  return j;
+}
+
+async function postWithProgress(
+  path: string,
+  body: any,
+  onProgress: (p: number) => void,
+) {
+  const send = () =>
+    new Promise<{ status: number; text: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${API_BASE}${path}`);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.setRequestHeader("Authorization", `Bearer ${getAccessToken() ?? ""}`);
+      let finished = false;
+      xhr.upload.onprogress = (e) => {
+        // Android can deliver progress events after the request has finished, and
+        // (with the dev network inspector) reads the body more than once, so
+        // `loaded` can restart or exceed `total`. Clamp, and keep the last 5% for
+        // the server's reply.
+        if (!finished && e.lengthComputable && e.total)
+          onProgress(Math.min(0.95, e.loaded / e.total));
+      };
+      xhr.onload = () => {
+        finished = true;
+        resolve({ status: xhr.status, text: xhr.responseText });
+      };
+      xhr.onerror = () => reject(new Error("Network error"));
+      xhr.ontimeout = () => reject(new Error("Upload timed out"));
+      xhr.send(JSON.stringify(body));
+    });
+  let res = await send();
+  if (res.status === 401 && (await tryRefresh())) res = await send();
+  let j: any = null;
+  try {
+    j = res.text ? JSON.parse(res.text) : null;
+  } catch {
+    /* plain text */
+  }
+  if (res.status < 200 || res.status >= 300)
+    throw new Error(j?.detail || res.text || `Upload failed (${res.status})`);
   return j;
 }
 
@@ -72,7 +140,29 @@ function blobToB64(b: Blob): Promise<string> {
 }
 
 /** Uploads one picked file; returns the backend URL path (/api/media/files/{id}). */
-export async function uploadMedia(m: PickedMedia | { uri: string; kind: "audio"; mime: string; size: number; duration?: number | null }, purpose: "post" | "report" | "chat" | "cover" | "gift", onProgress?: (p: number) => void): Promise<string> {
+export async function uploadMedia(
+  m:
+    | PickedMedia
+    | {
+        uri: string;
+        kind: "audio";
+        mime: string;
+        size: number;
+        duration?: number | null;
+      },
+  purpose: "post" | "report" | "chat" | "cover" | "gift",
+  onProgress?: (p: number) => void,
+): Promise<string> {
+  // Progress only ever moves forward (late or retried events never pull it back).
+  let best = 0;
+  const report = onProgress
+    ? (p: number) => {
+        if (p > best) {
+          best = p;
+          onProgress(p);
+        }
+      }
+    : undefined;
   let size = m.size;
   let blob: Blob | null = null;
   if (Platform.OS === "web") {
@@ -83,17 +173,37 @@ export async function uploadMedia(m: PickedMedia | { uri: string; kind: "audio";
     size = info?.size || 0;
   }
   const total = Math.max(1, Math.ceil(size / RAW_CHUNK));
-  const init = await post("/media/upload/init", { kind: m.kind, mime: m.mime, size, purpose, total_chunks: total, duration: m.duration ?? null });
+  const init = await post("/media/upload/init", {
+    kind: m.kind,
+    mime: m.mime,
+    size,
+    purpose,
+    total_chunks: total,
+    duration: m.duration ?? null,
+  });
   for (let i = 0; i < total; i++) {
     const start = i * RAW_CHUNK;
     const len = Math.min(RAW_CHUNK, size - start);
     const data = blob
       ? await blobToB64(blob.slice(start, start + len))
-      : await FileSystem.readAsStringAsync(m.uri, { encoding: FileSystem.EncodingType.Base64, position: start, length: len });
-    await post("/media/upload/chunk", { upload_id: init.upload_id, index: i, data });
-    onProgress?.((i + 1) / total);
+      : await FileSystem.readAsStringAsync(m.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+          position: start,
+          length: len,
+        });
+    const chunk = { upload_id: init.upload_id, index: i, data };
+    if (report) {
+      await postWithProgress("/media/upload/chunk", chunk, (p) =>
+        report((i + p) / total),
+      );
+    } else {
+      await post("/media/upload/chunk", chunk);
+    }
+    report?.((i + 1) / total);
   }
-  const done = await post("/media/upload/complete", { upload_id: init.upload_id });
+  const done = await post("/media/upload/complete", {
+    upload_id: init.upload_id,
+  });
   return done.url as string;
 }
 
@@ -112,13 +222,24 @@ export function privateMediaUrl(u?: string | null): string | undefined {
 }
 
 /** Device camera capture (permission-checked). */
-export async function captureImage(): Promise<PickedMedia | null | "denied" | "blocked"> {
+export async function captureImage(): Promise<
+  PickedMedia | null | "denied" | "blocked"
+> {
   const perm = await ImagePicker.getCameraPermissionsAsync();
   let granted = perm.granted;
-  if (!granted && perm.canAskAgain !== false) granted = (await ImagePicker.requestCameraPermissionsAsync()).granted;
+  if (!granted && perm.canAskAgain !== false)
+    granted = (await ImagePicker.requestCameraPermissionsAsync()).granted;
   if (!granted) return perm.canAskAgain === false ? "blocked" : "denied";
-  const r = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 1 });
+  const r = await ImagePicker.launchCameraAsync({
+    mediaTypes: ["images"],
+    quality: 1,
+  });
   if (r.canceled || !r.assets?.length) return null;
   const a = r.assets[0];
-  return { uri: a.uri, kind: "image", mime: a.mimeType || "image/jpeg", size: a.fileSize || 0 };
+  return {
+    uri: a.uri,
+    kind: "image",
+    mime: a.mimeType || "image/jpeg",
+    size: a.fileSize || 0,
+  };
 }

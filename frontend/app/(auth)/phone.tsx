@@ -6,6 +6,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useAuth } from "@/src/auth-context";
@@ -124,7 +125,7 @@ export default function PhoneAuth() {
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
         <Pressable
           testID="phone-back"
-          onPress={() => (step === "otp" ? setStep("phone") : router.back())}
+          onPress={() => (step === "otp" ? setStep("phone") : safeBack(router))}
           hitSlop={12}
           style={styles.backBtn}
         >

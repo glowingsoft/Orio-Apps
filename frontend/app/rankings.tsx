@@ -3,6 +3,7 @@ import { useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -47,7 +48,7 @@ export default function Rankings() {
     <View style={styles.container} testID="rankings-screen">
       <LinearGradient colors={[catData.color, colors.surface]} style={[StyleSheet.absoluteFill, { opacity: 0.3 }]} />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="back-btn">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{t.rankingsTitle}</Text>

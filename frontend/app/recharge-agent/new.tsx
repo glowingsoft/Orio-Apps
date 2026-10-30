@@ -147,7 +147,7 @@ export default function NewRechargeAgentTxScreen() {
               <Text style={styles.hint}>{t.recentOnly}</Text>
 
               {/* Note */}
-              <Text style={styles.label}>{t.note} ({t.optional ?? "optional"})</Text>
+              <Text style={styles.label}>{t.note} ({t.optional})</Text>
               <TextInput
                 style={[styles.input, { minHeight: 60, textAlignVertical: "top" }]}
                 value={note}

@@ -39,7 +39,7 @@ export default function PostDetail() {
             <VipName name={post.author?.nickname || "User"} color={post.author?.name_color} vipLevel={post.author?.vip_level} style={styles.name} numberOfLines={1} />
           </Pressable>
           {!!post.text && <Text style={styles.text}>{post.text}</Text>}
-          <PostMedia testID="post-detail-media" images={post.images} video={post.video_url} />
+          <PostMedia testID="post-detail-media" images={post.images} video={post.video_url} videoThumb={(post as any).video_thumb_url} videoDuration={(post as any).video_duration} />
         </ScrollView>
       )}
     </View>

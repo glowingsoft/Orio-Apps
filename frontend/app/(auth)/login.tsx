@@ -13,7 +13,7 @@ import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/components/Toast";
 import { spacing, radius, colors } from "@/src/theme";
 
-const LOGO = require("../../assets/images/orio-toast-logo.png");
+const LOGO = require("../../assets/images/yazeen-logo.png");
 
 // Extract a Facebook access_token from an OAuth redirect URL (implicit flow).
 function extractFbAccessToken(url: string | null | undefined): string | null {
@@ -190,7 +190,7 @@ export default function Login() {
           </View>
 
           {mode === "email" ? (
-            <View style={{ writingDirection: isRTL ? "rtl" : "ltr" }}>
+            <View style={{ direction: isRTL ? "rtl" : "ltr" }}>
               <TextInput testID="login-email-input" value={email} onChangeText={setEmail} placeholder={t.email} placeholderTextColor={colors.muted} autoCapitalize="none" keyboardType="email-address" style={[styles.input, { textAlign: isRTL ? "right" : "left" }]} />
               <View style={styles.pwdWrap}>
                 <TextInput testID="login-password-input" value={password} onChangeText={setPassword} placeholder={t.password} placeholderTextColor={colors.muted} secureTextEntry={!showPwd} autoCapitalize="none" autoCorrect={false} style={[styles.input, { marginBottom: 0, textAlign: isRTL ? "right" : "left", paddingRight: isRTL ? spacing.lg : 48, paddingLeft: isRTL ? 48 : spacing.lg }]} />
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(139,92,246,0.06)",
   },
-  logoImg: { width: 140, height: 140 },
+  logoImg: { width: 140, height: 140, borderRadius: 32 },
   wordmark: {
     color: colors.onSurface, fontSize: 48, fontWeight: "900", letterSpacing: 4,
     marginTop: spacing.sm,

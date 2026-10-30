@@ -4,6 +4,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -210,7 +211,7 @@ export default function LudoGameScreen() {
             </Pressable>
           )}
           {(g.status === "finished" || g.status === "abandoned") && (
-            <Pressable style={styles.actionBtn} onPress={() => router.back()} testID="back-btn">
+            <Pressable style={styles.actionBtn} onPress={() => safeBack(router)} testID="back-btn">
               <Icon name="arrow-back" size={16} color={colors.onBrandPrimary} />
               <Text style={styles.actionText}>Back</Text>
             </Pressable>

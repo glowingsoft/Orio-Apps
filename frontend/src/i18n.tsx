@@ -257,6 +257,7 @@ const STRINGS = {
     externalReference: "External reference",
     reason: "Reason",
     note: "Note",
+    optional: "optional",
     setAsDefault: "Set as default",
     defaultLabel: "Default",
     verified: "Verified",
@@ -838,6 +839,7 @@ const STRINGS = {
     externalReference: "المرجع الخارجي",
     reason: "السبب",
     note: "ملاحظة",
+    optional: "اختياري",
     setAsDefault: "تعيين كافتراضي",
     defaultLabel: "افتراضي",
     verified: "موثّق",
@@ -1180,7 +1182,13 @@ const STRINGS = {
   },
 } as const;
 
-type Bundle = typeof STRINGS.en;
+
+type Widen<T> = {
+  readonly [K in keyof T]: T[K] extends string ? string
+    : T[K] extends (...args: infer A) => string ? (...args: A) => string
+    : T[K];
+};
+type Bundle = Widen<typeof STRINGS.en>;
 type Ctx = {
   lang: Lang;
   isRTL: boolean;

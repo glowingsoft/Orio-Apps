@@ -13,7 +13,7 @@ import { useI18n } from "@/src/i18n";
 import { spacing } from "@/src/theme";
 import { TopPurpleGlow } from "@/src/components/TopPurpleGlow";
 
-const LOGO = require("../assets/images/orio-toast-logo.png");
+const LOGO = require("../assets/images/yazeen-logo.png");
 
 export default function Index() {
   useAuth();

@@ -6,6 +6,7 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
 import { useRouter, Stack } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useI18n } from "@/src/i18n";
@@ -134,7 +135,7 @@ export default function DeleteAccountScreen() {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={[styles.header, { flexDirection: "row" }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="delete-account-back">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="delete-account-back">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title} numberOfLines={1}>{p.title}</Text>
@@ -176,7 +177,7 @@ export default function DeleteAccountScreen() {
 
         <Text style={[styles.question, { textAlign: "center" }]}>{p.question}</Text>
 
-        <Pressable style={styles.cancelBtn} onPress={() => router.back()} testID="delete-account-cancel">
+        <Pressable style={styles.cancelBtn} onPress={() => safeBack(router)} testID="delete-account-cancel">
           <Text style={styles.cancelText}>{p.cancel}</Text>
         </Pressable>
         <Pressable

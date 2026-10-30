@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
-import { Image } from "expo-image";
+import { AvatarImage } from "@/src/components/AvatarImage";
 import { useRouter } from "expo-router";
 import { useLiveUser } from "@/src/hooks/useLiveUser";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -97,7 +97,8 @@ export default function Me() {
               style={{ flexDirection: "row", flex: 1, alignItems: "center" }}
             >
               {/* Iter-99 — photo and name both open the user's own profile. */}
-              <Image testID="me-avatar" source={user.avatar_url} style={styles.avatar} contentFit="cover" />
+              <AvatarImage uri={user.avatar_url} name={user.nickname} style={styles.avatar} />
+
               {/* Same comfortable spacing in EN & AR: start-aligned column (mirrors natively). */}
               <View style={{ flex: 1, marginStart: spacing.xl + 8, alignItems: "flex-start", gap: 8 }}>
                 <VipName

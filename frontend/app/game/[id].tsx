@@ -2,6 +2,7 @@ import { useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, TextInput, Alert } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { apiPlayGame } from "@/src/api";
@@ -57,7 +58,7 @@ export default function GameScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable testID="back-btn" onPress={() => router.back()} style={styles.iconBtn}>
+        <Pressable testID="back-btn" onPress={() => safeBack(router)} style={styles.iconBtn}>
           <Icon name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{cfg.name}</Text>

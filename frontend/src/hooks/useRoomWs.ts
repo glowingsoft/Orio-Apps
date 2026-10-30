@@ -10,7 +10,8 @@ export type RoomEvent =
   | { type: "voice_state"; user_id: string; muted: boolean; speaking: boolean }
   | { type: "envelope_created"; envelope: any }
   | { type: "envelope_claimed"; env_id: string; user: any; amount: number; slots_remaining: number }
-  | { type: "system"; kind: string; user?: any; seat_index?: number; num_seats?: number; at: string }
+  | { type: "system"; kind: string; user?: any; user_id?: string; nickname?: string; text?: string; seat_index?: number; num_seats?: number; at: string }
+  | { type: "content_blocked"; code?: string }
   | { type: "room_closed"; by?: any; at: string }
   | { type: "chat_cleared"; by?: any; at: string }
   | { type: "pong"; at: string };

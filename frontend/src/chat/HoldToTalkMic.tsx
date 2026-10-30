@@ -1,10 +1,4 @@
-/**
- * Iter-137 — premium PUSH-TO-TALK voice messages.
- * Press & hold → record (after permission + session init) · release → stop,
- * upload, send · slide away (>70px) / interruption / app background → cancel
- * (discarded) · < 1s → discarded · 30s hard cap → auto-send.
- * Upload failure keeps the clip and offers Retry (never marked as sent).
- */
+
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable, StyleSheet, AppState, Linking, ActivityIndicator } from "react-native";
 import { useAudioRecorder, useAudioRecorderState, RecordingPresets, AudioModule, setAudioModeAsync } from "expo-audio";
@@ -109,23 +103,32 @@ export function HoldToTalkMic({ ar, onSend }: { ar: boolean; onSend: (uri: strin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // Short hints ("Hold to record", "Recording cancelled") fade out on their own.
+  useEffect(() => {
+    if (!note || note.settings) return;
+    const t = setTimeout(() => setNote(null), 2500);
+    return () => clearTimeout(t);
+  }, [note]);
+
   const secs = Math.floor((rs.durationMillis || 0) / 1000);
   return (
     <View style={styles.wrap}>
+      {/* Wide fixed-size anchor so the pill is not squeezed to the 48px mic width. */}
+      <View style={styles.pillAnchor} pointerEvents="box-none">
       {phase === "recording" && (
-        <View style={[styles.pill, cancelArmed && styles.pillCancel]} testID="ptt-recording">
+        <View style={[styles.pill, cancelArmed && styles.pillCancel]} testID="ptt-recording" pointerEvents="none">
           <View style={styles.dot} />
           <Text style={styles.pillText}>{`0:${String(secs).padStart(2, "0")}`}</Text>
-          <Text style={styles.pillHint}>{cancelArmed ? (ar ? "أفلت للإلغاء" : "Release to cancel") : (ar ? "أفلت للإرسال · اسحب بعيدًا للإلغاء" : "Release to send · slide away to cancel")}</Text>
+          <Text style={styles.pillHint} numberOfLines={1}>{cancelArmed ? (ar ? "أفلت للإلغاء" : "Release to cancel") : (ar ? "أفلت للإرسال · اسحب بعيدًا للإلغاء" : "Release to send · slide away to cancel")}</Text>
         </View>
       )}
       {phase === "sending" && (
-        <View style={styles.pill} testID="ptt-sending"><ActivityIndicator size="small" color={colors.brandPrimary} /><Text style={styles.pillHint}>{ar ? "جارٍ إرسال الرسالة الصوتية…" : "Sending voice message…"}</Text></View>
+        <View style={styles.pill} testID="ptt-sending"><ActivityIndicator size="small" color={colors.brandPrimary} /><Text style={styles.pillHint} numberOfLines={1}>{ar ? "جارٍ إرسال الرسالة الصوتية…" : "Sending voice message…"}</Text></View>
       )}
       {phase === "failed" && (
         <View style={[styles.pill, styles.pillCancel]} testID="ptt-failed">
           <Icon name="alert-circle" size={16} color={colors.error} />
-          <Text style={styles.pillHint}>{ar ? "فشل الإرسال" : "Failed to send"}</Text>
+          <Text style={styles.pillHint} numberOfLines={1}>{ar ? "فشل الإرسال" : "Failed to send"}</Text>
           <Pressable testID="ptt-retry" onPress={() => { const f = failed.current; if (f && !busy.current) { busy.current = true; send(f.uri, f.secs, f.wave); } }} hitSlop={8}>
             <Text style={styles.link}>{ar ? "إعادة المحاولة" : "Retry"}</Text>
           </Pressable>
@@ -136,10 +139,11 @@ export function HoldToTalkMic({ ar, onSend }: { ar: boolean; onSend: (uri: strin
       )}
       {phase === "idle" && note && (
         <View style={styles.pill} testID="ptt-note">
-          <Text style={styles.pillHint}>{note.text}</Text>
+          <Text style={styles.pillHint} numberOfLines={2}>{note.text}</Text>
           {note.settings && <Pressable testID="ptt-open-settings" onPress={() => Linking.openSettings()} hitSlop={8}><Text style={styles.link}>{ar ? "فتح الإعدادات" : "Open Settings"}</Text></Pressable>}
         </View>
       )}
+      </View>
       <View
         testID="chat-tool-voice"
         accessibilityRole="button"
@@ -173,18 +177,19 @@ export function HoldToTalkMic({ ar, onSend }: { ar: boolean; onSend: (uri: strin
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: "flex-end" },
+  wrap: { alignItems: "flex-start", zIndex: 10 },
   btnHit: { width: 48, height: 44, alignItems: "center", justifyContent: "center" },
   btn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", shadowColor: colors.brandPrimary, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
   btnActive: { transform: [{ scale: 1.18 }] },
+  pillAnchor: { position: "absolute", bottom: 52, start: 0, width: 300, alignItems: "flex-start" },
   pill: {
-    position: "absolute", bottom: 52, end: 0, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: spacing.md, height: 36,
+    flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: spacing.md, minHeight: 36, paddingVertical: 6, maxWidth: 300,
     borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 4, maxWidth: 300, justifyContent: "center",
+    shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 4, justifyContent: "center",
   },
   pillCancel: { borderColor: colors.error },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.error },
   pillText: { color: colors.onSurface, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  pillHint: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  pillHint: { color: colors.muted, fontSize: 12, fontWeight: "600", flexShrink: 1 },
   link: { color: colors.brandPrimary, fontWeight: "800", fontSize: 12 },
 });

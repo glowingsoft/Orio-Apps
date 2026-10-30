@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback, useRef, type ComponentProps } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Modal, TextInput, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -34,7 +34,7 @@ export default function Rooms() {
   const { isRTL, t } = useI18n();
   const ALL_COUNTRY = { code: "all", name: t.allCountries, flag: ALL_COUNTRY_FLAG };
   // Iter-49 — ORIO Party Rooms discovery pills (7 real filters)
-  const DISCOVERY_TABS: { id: string; icon: string; label: string }[] = [
+  const DISCOVERY_TABS: { id: string; icon: ComponentProps<typeof Icon>["name"]; label: string }[] = [
     { id: "recommended", icon: "sparkles",        label: t.discoveryRecommended },
     { id: "pk",          icon: "flash",           label: "PK" },
     { id: "music",       icon: "musical-notes",   label: t.discoveryMusic },
@@ -199,17 +199,14 @@ export default function Rooms() {
       ) : rooms.length === 0 ? (
         <View style={styles.center}>
           <Icon
-            name={tab === "following" ? "heart-outline" : tab === "watched" ? "time-outline" : tab === "pk" ? "flash-outline" : "mic-off"}
+            name={tab === "watched" ? "time-outline" : tab === "pk" ? "flash-outline" : "mic-off"}
             size={48}
             color={colors.muted}
           />
           <Text style={styles.emptyText}>
-            {tab === "following" ? t.emptyFollowing :
-             tab === "watched"   ? t.emptyWatched :
+            {tab === "watched"   ? t.emptyWatched :
              tab === "pk"        ? t.emptyPk :
              tab === "games"     ? t.emptyGames :
-             tab === "family"    ? t.emptyFamily :
-             tab === "popular"   ? t.emptyPopular :
              t.emptyRooms}
           </Text>
         </View>

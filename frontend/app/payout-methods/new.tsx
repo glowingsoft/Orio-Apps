@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter, Stack } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +25,7 @@ export default function NewPayoutMethodScreen() {
     mutationFn: () => apiAddPayoutMethod(selected!, values),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["payout", "methods"] });
-      router.back();
+      safeBack(router);
     },
     onError: (e: Error) => setErr(e instanceof ApiError ? e.message : "Failed"),
   });

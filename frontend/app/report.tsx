@@ -16,6 +16,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Linking,
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { pickMedia, uploadMedia, type PickedMedia } from "@/src/media/upload";
@@ -113,7 +114,7 @@ export default function ReportScreen() {
       else if (postId) await apiReportPost(postId, body);
       else await apiReportUser(userId, body);
       toast.success(isRTL ? "تم إرسال البلاغ. شكراً لك." : "Report submitted. Thank you.");
-      setTimeout(() => router.back(), 400);
+      setTimeout(() => safeBack(router), 400);
     } catch (e: any) {
       toast.error(e?.message || (isRTL ? "فشل إرسال البلاغ" : "Report failed"));
     } finally {
@@ -127,7 +128,7 @@ export default function ReportScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, flexDirection: "row" }]}>
         <Pressable
           testID="report-back"
-          onPress={() => router.back()}
+          onPress={() => safeBack(router)}
           hitSlop={10}
           style={styles.backBtn}
         >

@@ -6,8 +6,9 @@
  * Shows empty / typing / loading / results / no-results / error states.
  */
 import { CountryFlag } from "@/src/components/CountryFlag";
-import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, ActivityIndicator, Platform } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { Image } from "expo-image";
@@ -85,7 +86,7 @@ export default function SearchScreen() {
     <View style={styles.root} testID="search-screen">
       <Stack.Screen options={{ headerShown: false }} />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} testID="search-back" hitSlop={10}>
+        <Pressable onPress={() => safeBack(router)} style={styles.backBtn} testID="search-back" hitSlop={10}>
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <View style={styles.searchBox}>
@@ -296,7 +297,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.brandPrimary + "33",
   },
-  input: { flex: 1, color: colors.onSurface, fontSize: 15, paddingVertical: 0 },
+  input: { flex: 1, color: colors.onSurface, fontSize: 15, paddingVertical: 0, ...(Platform.OS === "web" ? ({ outlineStyle: "none", outlineWidth: 0 } as any) : null) },
   results: { gap: spacing.sm, paddingVertical: spacing.md },
   card: {
     flexDirection: "row",

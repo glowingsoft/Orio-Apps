@@ -28,6 +28,7 @@ import { DeletionCancelledNotice } from "@/src/components/DeletionCancelledNotic
 import { LuxuryGiftBanner } from "@/src/components/LuxuryGiftBanner";
 import { RealtimeHost } from "@/src/components/RealtimeHost";
 import { ImageViewerProvider } from "@/src/components/ImageViewer";
+import { ConfirmHost } from "@/src/components/ConfirmHost";
 import { LevelUpWatcher } from "@/src/levels/LevelUpWatcher";
 import { BanScreen } from "@/src/components/BanScreen";
 import { installDiagnostics, setDiagRoute } from "@/src/diagnostics";
@@ -72,10 +73,69 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inProfileCompletion = segments[0] === "profile-completion";
     if (!user && !inAuth && !inAdmin) {
       router.replace("/(auth)/login");
-    } else if (user && !user.profile_completed && !inProfileCompletion && !inAdmin) {
+    } else if (
+      user &&
+      !user.profile_completed &&
+      !inProfileCompletion &&
+      !inAdmin
+    ) {
       // Iter-44 — gate every post-login screen behind profile completion.
       router.replace("/profile-completion");
-    } else if (user && user.profile_completed && !inTabs && !["room", "chat", "create-room", "game", "games", "settings", "delete-account", "language", "vip", "vip-guide", "friendship", "cp", "rankings", "families", "invite", "my-rooms", "managed-rooms", "visitors", "user", "tasks", "edit-profile", "earnings", "agency", "withdraw", "withdrawals", "payout-methods", "recharge-agent", "admin", "profile-completion", "search", "report", "room-ranking", "global-ranking", "level", "level-rules", "bag", "store", "medal", "notifications", "support", "activities", "activity-apply", "friend-requests", "connections", "accounts", "create-post", "post", "user-posts"].includes(segments[0] as string)) {
+    } else if (
+      user &&
+      user.profile_completed &&
+      !inTabs &&
+      ![
+        "room",
+        "chat",
+        "create-room",
+        "game",
+        "games",
+        "settings",
+        "delete-account",
+        "language",
+        "vip",
+        "vip-guide",
+        "friendship",
+        "cp",
+        "rankings",
+        "families",
+        "invite",
+        "my-rooms",
+        "managed-rooms",
+        "visitors",
+        "user",
+        "tasks",
+        "edit-profile",
+        "earnings",
+        "agency",
+        "withdraw",
+        "withdrawals",
+        "payout-methods",
+        "recharge-agent",
+        "admin",
+        "profile-completion",
+        "search",
+        "report",
+        "room-ranking",
+        "global-ranking",
+        "level",
+        "level-rules",
+        "bag",
+        "store",
+        "medal",
+        "notifications",
+        "support",
+        "activities",
+        "activity-apply",
+        "friend-requests",
+        "connections",
+        "accounts",
+        "create-post",
+        "post",
+        "user-posts",
+      ].includes(segments[0] as string)
+    ) {
       router.replace("/(tabs)/home");
     }
   }, [user, loading, segments, router]);
@@ -87,7 +147,9 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
-        <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <GestureHandlerRootView
+          style={{ flex: 1, backgroundColor: colors.surface }}
+        >
           <QueryClientProvider client={queryClient}>
             <KeyboardProvider>
               <I18nProvider>
@@ -95,23 +157,34 @@ export default function RootLayout() {
                   <RoomSessionProvider>
                     <ToastProvider>
                       <ImageViewerProvider>
-                        <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
+                        <StatusBar
+                          barStyle="dark-content"
+                          backgroundColor={colors.surface}
+                        />
                         <AuthGate>
                           <CallProvider>
-                          <View style={{ flex: 1 }}>
-                            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }} />
-                            <FloatingMiniRoom />
-                            <LevelUpWatcher />
-                            <BanScreen />
-                            <PresenceHeartbeat />
-                            <RealtimeHost />
-                            <NetworkWatcher />
-                            <DeletionCancelledNotice />
-                            <LuxuryGiftBanner />
-                            <ImageCropperHost />
-                            <RoomLockHost />
-                            <PushHost />
-                          </View>
+                            <View style={{ flex: 1 }}>
+                              <Stack
+                                screenOptions={{
+                                  headerShown: false,
+                                  contentStyle: {
+                                    backgroundColor: colors.surface,
+                                  },
+                                }}
+                              />
+                              <FloatingMiniRoom />
+                              <LevelUpWatcher />
+                              <BanScreen />
+                              <PresenceHeartbeat />
+                              <RealtimeHost />
+                              <NetworkWatcher />
+                              <DeletionCancelledNotice />
+                              <LuxuryGiftBanner />
+                              <ImageCropperHost />
+                              <RoomLockHost />
+                              <PushHost />
+                              <ConfirmHost />
+                            </View>
                           </CallProvider>
                         </AuthGate>
                       </ImageViewerProvider>

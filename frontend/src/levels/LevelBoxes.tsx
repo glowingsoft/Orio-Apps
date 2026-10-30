@@ -59,8 +59,7 @@ function Box({ label, level, children, testID, href, fill, onNavigate }: any) {
 const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: 8, paddingVertical: 4 },
   square: {
-    // Shorter cards (same width): height = width / 1.42.
-    flex: 1, aspectRatio: 1.42, alignItems: "center", justifyContent: "center", gap: 1,
+    flex: 1, aspectRatio: 1.42, maxHeight: 110, alignItems: "center", justifyContent: "center", gap: 1,
     borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, overflow: "hidden",
   },
   // Fixed white text with shadow so it reads on every level palette.

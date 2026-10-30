@@ -34,7 +34,7 @@ export function GiftCard({ gift, selected, onSelect }: { gift: any; selected: bo
 
 const styles = StyleSheet.create({
   card: {
-    width: "23%", aspectRatio: 0.82,
+    width: "23%", maxWidth: 96, aspectRatio: 0.82,
     borderRadius: radius.md, padding: spacing.xs ?? 4,
     alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "transparent",
   },

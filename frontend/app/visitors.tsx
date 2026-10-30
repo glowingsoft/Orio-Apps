@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from "
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, useFocusEffect } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -51,7 +52,7 @@ export default function Visitors() {
         end={{ x: 0, y: 0.4 }}
       />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="back-btn">
           <Icon name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title} testID="visitors-title">

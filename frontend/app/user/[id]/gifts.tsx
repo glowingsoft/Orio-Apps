@@ -7,6 +7,7 @@ import { View, Text, StyleSheet, Pressable, ActivityIndicator, FlatList } from "
 import { VipName } from "@/src/components/VipName";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useQuery } from "@tanstack/react-query";
@@ -33,7 +34,7 @@ export default function ReceivedGiftsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]} testID="gifts-received-screen">
       {/* Header */}
       <View style={styles.header}>
-        <Pressable testID="back-btn" onPress={() => router.back()} style={styles.iconBtn}>
+        <Pressable testID="back-btn" onPress={() => safeBack(router)} style={styles.iconBtn}>
           <Icon name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1, alignItems: "center" }}>

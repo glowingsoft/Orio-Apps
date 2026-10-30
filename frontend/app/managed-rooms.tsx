@@ -5,6 +5,7 @@
 import React from "react";
 import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useQuery } from "@tanstack/react-query";
@@ -22,7 +23,7 @@ export default function ManagedRooms() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]} testID="managed-rooms-screen">
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.back} testID="managed-rooms-back">
+        <Pressable onPress={() => safeBack(router)} hitSlop={10} style={styles.back} testID="managed-rooms-back">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={24} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{isRTL ? "الغرف التي أديرها" : "Rooms I Manage"}</Text>

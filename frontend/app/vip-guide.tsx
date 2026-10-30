@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -81,7 +82,7 @@ export default function VipGuide() {
       <LinearGradient colors={["#1a0f30", "#0A0416", "#000000"]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 0.6 }} style={StyleSheet.absoluteFill} />
 
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="vip-guide-back">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="vip-guide-back">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{lang === "ar" ? "دليل VIP" : "VIP Guide"}</Text>

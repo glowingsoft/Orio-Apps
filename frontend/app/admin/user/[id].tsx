@@ -7,6 +7,7 @@ import { CountryFlag } from "@/src/components/CountryFlag";
 import React, { useState } from "react";
 import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Image, Alert, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminShell, adminStyles, useAdminCan } from "@/src/components/AdminShell";
 import { adminP1 } from "@/src/api";
@@ -70,7 +71,7 @@ export default function AdminUserDetail() {
   const u = d.data;
   return (
     <AdminShell title="User Management">
-      <Pressable onPress={() => router.back()} testID="admin-user-back" style={[adminStyles.ghostBtn, { alignSelf: "flex-start", marginBottom: spacing.md }]}>
+      <Pressable onPress={() => safeBack(router)} testID="admin-user-back" style={[adminStyles.ghostBtn, { alignSelf: "flex-start", marginBottom: spacing.md }]}>
         <Text style={adminStyles.ghostBtnText}>← Back</Text>
       </Pressable>
       {d.isLoading ? <ActivityIndicator color={colors.brandPrimary} /> : !u ? (

@@ -1142,6 +1142,12 @@ export async function apiCpAccept(user_id: string) {
     body: JSON.stringify({ user_id }),
   });
 }
+export async function apiCpRemove(user_id: string) {
+  return request<any>("/cp", {
+    method: "DELETE",
+    body: JSON.stringify({ user_id }),
+  });
+}
 
 export async function apiFamilies() {
   return request<any[]>("/families");

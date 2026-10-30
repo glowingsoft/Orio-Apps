@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { View, Text, StyleSheet, FlatList, TextInput, Pressable, KeyboardAvoidingView, Platform, Modal, Alert, Linking } from "react-native";
+import { KeyboardStickyView, useKeyboardState } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -19,6 +21,9 @@ import { uploadMedia, pickMedia, captureImage, privateMediaUrl } from "@/src/med
 import { AgeBadge, LevelBadgeChip } from "@/src/levels/badges";
 import { VoiceBubble } from "@/src/chat/VoiceBubble";
 import { HoldToTalkMic } from "@/src/chat/HoldToTalkMic";
+import { ChatSkeleton } from "@/src/chat/ChatSkeleton";
+import { UploadProgressRing } from "@/src/chat/UploadProgressRing";
+import { useSharedValue } from "react-native-reanimated";
 import { ChatGiftSheet } from "@/src/chat/ChatGiftSheet";
 import { useCalls } from "@/src/calls/CallProvider";
 import { useToast } from "@/src/components/Toast";
@@ -81,24 +86,38 @@ export default function Chat() {
   // Iter-118 — official Orio Team conversation is read-only (server-enforced too).
   const readOnly = !!(other as any)?.is_official;
   const live = useRealtimeConnected();
-  const { data: messages = [], refetch } = useQuery({
+  const { data: messages = [], refetch, isPending: messagesPending } = useQuery({
     queryKey: ["messages", id],
     queryFn: () => apiMessagesWith(id!),
     enabled: !!id,
     refetchInterval: pollMs(live, 60_000, 3000),
   });
-  // Iter-135 — opening/reading the thread clears unread counts everywhere.
+
   useEffect(() => { qc.invalidateQueries({ queryKey: ["unread-count"] }); qc.invalidateQueries({ queryKey: ["threads"] }); }, [messages?.length, qc]);
 
-  useEffect(() => { setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 200); }, [messages]);
+  // Inverted list: newest message first, drawn at the bottom. Offset 0 is the
+  // latest message, so the chat opens there with no jump, and new messages
+  // appear in place while you are at the bottom (data built below `failed`).
+  const scrollToLatest = () => {
+    setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+  };
+
+  const keyboardOpen = useKeyboardState((s) => s.isVisible);
+  const keyboardHeight = useKeyboardState((s) => s.height);
+  const keyboardPad = Platform.OS === "android" && keyboardOpen ? Math.max(0, keyboardHeight - insets.bottom) : 0;
+  useEffect(() => {
+    if (keyboardPad > 0) scrollToLatest();
+  }, [keyboardPad]);
 
   // Outgoing messages the server refused (block, network) stay visible with a red "!".
   const [failed, setFailed] = useState<any[]>([]);
+  const listData = useMemo(() => dedupeById([...(messages as any[]), ...failed]).reverse(), [messages, failed]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [giftPlay, setGiftPlay] = useState<GiftFxEvent | null>(null);
   const sendReaction = async (k: string) => {
     setEmojiOpen(false);
     if (!id) return;
+    scrollToLatest();
     try { await apiSendChatReaction(id, k); await refetch(); } catch (e: any) {
       toast.show({ kind: "error", message: /slow/i.test(String(e?.message)) ? (isRTL ? "انتظر قليلاً قبل إرسال تفاعل آخر" : "Please wait a moment before reacting again") : String(e?.message || "Error") });
     }
@@ -107,6 +126,7 @@ export default function Chat() {
     if (!text.trim() || !id) return;
     const t = text.trim();
     setText("");
+    scrollToLatest();
     try { await apiSendMessage(id, t); await refetch(); } catch (e: any) {
       const m = String(e?.message || "");
       if (/BLOCKED/i.test(m) || !/prohibited|abusive|محظور/i.test(m)) {
@@ -121,18 +141,25 @@ export default function Chat() {
   };
   const isBlocked = !!(other as any)?.is_blocked_view;
 
-  // Iter-134 — real media: upload to object storage, then send.
+
+  const [pendingImg, setPendingImg] = useState<{ uri: string } | null>(null);
+  const uploadProgress = useSharedValue(0);
+  const hasPendingImg = !!pendingImg;
+  useEffect(() => {
+    if (hasPendingImg) scrollToLatest();
+  }, [hasPendingImg]);
   const sendMedia = async (m: any, kind: "image" | "voice", duration?: number, waveform?: number[]) => {
     if (!id) return;
     setUploading(true);
+    if (kind === "image") { uploadProgress.set(0); setPendingImg({ uri: m.uri }); }
     try {
-      const url = await uploadMedia(m, "chat");
+      const url = await uploadMedia(m, "chat", kind === "image" ? (p) => uploadProgress.set(p) : undefined);
       await apiSendChatMedia(id, kind, url, duration, waveform);
       await refetch();
     } catch (e: any) {
       toast.show({ kind: "error", message: isRTL ? "تعذّر الإرسال" : `Could not send: ${e?.message || ""}` });
       throw e;
-    } finally { setUploading(false); }
+    } finally { setUploading(false); setPendingImg(null); }
   };
   const sendVoice = async (uri: string, seconds: number, waveform?: number[]) => {
     const mime = Platform.OS === "web" ? "audio/webm" : "audio/mp4";
@@ -162,7 +189,7 @@ export default function Chat() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="back-btn">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1 }} />
@@ -201,18 +228,21 @@ export default function Chat() {
           </Pressable>
         </View>
       </View>
+      <View style={{ flex: 1 }}>
       <FlatList
         ref={listRef}
-        data={dedupeById([...(messages as any[]), ...failed])}
+        inverted
+        style={{ flex: 1 }}
+        data={listData}
         keyExtractor={(m: any, i) => m.id || i.toString()}
-        contentContainerStyle={{ padding: spacing.md, gap: spacing.md }}
+        // Inverted: paddingTop is the visual bottom (room for the keyboard).
+        contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.md, paddingTop: spacing.md + keyboardPad, gap: spacing.md }}
         renderItem={({ item, index }) => {
           const mine = item.sender_id === user?.id;
           const kind = item.kind || "text";
           return (
             <View style={[styles.msgRow, { justifyContent: mine ? "flex-end" : "flex-start" }]} testID={`msg-${index}`}>
               <Pressable
-                // Voice, gift and call entries never open the action menu.
                 onLongPress={() => item.id && !item.failed && !readOnly && !["voice", "gift", "call", "deleted", "emoji"].includes(kind) && setMsgMenu(item)}
                 disabled={kind === "emoji"}
                 delayLongPress={350}
@@ -240,7 +270,7 @@ export default function Chat() {
                   </View>
                 ) : kind === "image" ? (
                   <Pressable onPress={() => viewer.show(privateMediaUrl(item.media_url))}>
-                    <Image source={privateMediaUrl(item.media_url)} style={styles.photo} contentFit="cover" testID={`msg-image-${index}`} />
+                    <Image source={privateMediaUrl(item.media_url)} style={styles.photo} contentFit="cover" transition={200} cachePolicy="memory-disk" recyclingKey={item.id} testID={`msg-image-${index}`} />
                   </Pressable>
                 ) : kind === "voice" ? (
                   <VoiceBubble uri={privateMediaUrl(item.media_url)!} duration={item.duration} waveform={item.waveform} color={mine ? colors.onBrandPrimary : colors.onSurface} testID={`msg-voice-${index}`} />
@@ -283,7 +313,20 @@ export default function Chat() {
             </View>
           );
         }}
+        // Inverted: the header sits at the visual bottom, below the latest message.
+        ListHeaderComponent={pendingImg ? (
+          <View style={[styles.msgRow, { justifyContent: "flex-end", marginTop: spacing.md }]} testID="msg-image-uploading">
+            <View style={[styles.bubble, styles.mine, styles.imgBubble]}>
+              <Image source={pendingImg.uri} style={styles.photo} contentFit="cover" blurRadius={12} />
+              <View style={styles.uploadOverlay}>
+                <UploadProgressRing progress={uploadProgress} />
+              </View>
+            </View>
+          </View>
+        ) : null}
       />
+      {messagesPending && <ChatSkeleton />}
+      </View>
       {isBlocked ? (
         <View style={[styles.readOnly, { paddingBottom: insets.bottom + spacing.md, gap: 6 }]} testID="chat-blocked">
           <Text style={styles.readOnlyText}>
@@ -298,8 +341,9 @@ export default function Chat() {
           <Text style={styles.readOnlyText}>{isRTL ? "محادثة رسمية للقراءة فقط" : "Official read-only conversation"}</Text>
         </View>
       ) : (
+      <KeyboardStickyView enabled={Platform.OS === "android"} offset={{ closed: 0, opened: insets.bottom }}>
       <View style={{ backgroundColor: colors.surfaceSecondary, borderTopWidth: 0.5, borderTopColor: colors.border }}>
-        {!!uploading && <Text style={styles.uploading} testID="chat-uploading">{isRTL ? "جارٍ الإرسال…" : "Sending…"}</Text>}
+        {!!uploading && !pendingImg && <Text style={styles.uploading} testID="chat-uploading">{isRTL ? "جارٍ الإرسال…" : "Sending…"}</Text>}
         <View style={[styles.inputRow, { borderTopWidth: 0 }]}>
           <TextInput testID="chat-text-input" value={text} onChangeText={setText} placeholder={t.typeMessagePh} placeholderTextColor={colors.muted} style={[styles.input, { textAlign: isRTL ? "right" : "left" }]} onSubmitEditing={send} />
           <Pressable testID="send-btn" onPress={send} style={styles.sendBtn}>
@@ -319,6 +363,7 @@ export default function Chat() {
           </Pressable>
         </View>
       </View>
+      </KeyboardStickyView>
       )}
       <ActionSheet visible={!!msgMenu} onClose={() => setMsgMenu(null)} actions={msgActions(msgMenu)} cancelLabel={isRTL ? "إلغاء" : "Cancel"} testID="msg-actions" />
       {giftOpen && id && <ChatGiftSheet recipientId={id} ar={isRTL} onClose={() => setGiftOpen(false)} onSent={() => refetch()} />}
@@ -346,6 +391,7 @@ export default function Chat() {
 const styles = StyleSheet.create({
   msgRow: { flexDirection: "row" },
   imgBubble: { padding: 4 },
+  uploadOverlay: { position: "absolute", top: 4, left: 4, right: 4, bottom: 4, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: "rgba(0,0,0,0.15)" },
   emojiBubble: { backgroundColor: "transparent", padding: 0, borderWidth: 0 },
   giftPlay: { width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", marginStart: 4 },
   presence: { color: colors.muted, fontSize: 11, fontWeight: "600", marginTop: 2 },
@@ -356,7 +402,7 @@ const styles = StyleSheet.create({
   unsentBubble: { backgroundColor: colors.surfaceSecondary, borderWidth: 0.5, borderColor: colors.border },
   unsentRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   unsentText: { color: colors.muted, fontSize: 13, fontStyle: "italic" },
-  photo: { width: 180, height: 180, borderRadius: radius.md },
+  photo: { width: 180, height: 180, borderRadius: radius.md, backgroundColor: colors.surfaceTertiary },
   giftRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   giftImg: { width: 34, height: 34 },
   uploading: { color: colors.muted, fontSize: 12, textAlign: "center", marginTop: spacing.xs },

@@ -37,7 +37,7 @@ export function reportClientError(kind: string, err: any, extra = "") {
 
 export function installDiagnostics() {
   if (Platform.OS === "web") return;
-  const EU: any = (global as any).ErrorUtils;
+  const EU: any = (globalThis as any).ErrorUtils;
   const prev = EU?.getGlobalHandler?.();
   EU?.setGlobalHandler?.((e: any, isFatal?: boolean) => {
     reportClientError(isFatal ? "fatal" : "js", e);

@@ -12,6 +12,7 @@ import { View, Text, StyleSheet, Pressable, ScrollView, useWindowDimensions } fr
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolateColor } from "react-native-reanimated";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -124,7 +125,7 @@ export default function VipCenterScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, height: headerH }]} pointerEvents="box-none">
         <LinearGradient colors={[pageBg + "D9", pageBg + "00"]} style={StyleSheet.absoluteFill} pointerEvents="none" />
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn" hitSlop={8}>
+          <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="back-btn" hitSlop={8}>
             <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={theme.accent} />
           </Pressable>
           <Text testID="vip-title" style={[styles.title, { textShadowColor: theme.tint }]}>VIP</Text>

@@ -6,6 +6,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -118,7 +119,7 @@ export default function EditProfile() {
       qc.invalidateQueries({ queryKey: ["name-changes", user?.id] });
       setAvatarPending(null);
       setCoverPending(null);
-      router.back();
+      safeBack(router);
     },
     onError: (e: any) => {
       if (String(e?.message) === "MEDIA_BLOCKED") return; // modal handled
@@ -168,7 +169,7 @@ export default function EditProfile() {
       style={{ flex: 1, backgroundColor: colors.surface }}
     >
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable testID="edit-back" onPress={() => router.back()} style={styles.hBtn}>
+        <Pressable testID="edit-back" onPress={() => safeBack(router)} style={styles.hBtn}>
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{t.editProfile || "Edit Profile"}</Text>

@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Linking } from "react-native";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -76,7 +77,7 @@ export default function CreatePost() {
       });
       await qc.invalidateQueries({ queryKey: ["posts"] });
       toast.success(ar ? "تم النشر" : "Posted");
-      router.back();
+      safeBack(router);
     } catch (e: any) {
       toast.error(e?.message || (ar ? "فشل النشر" : "Failed to post"));
     } finally {
@@ -87,7 +88,7 @@ export default function CreatePost() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]} testID="create-post-screen">
       <View style={[styles.header, { flexDirection: "row" }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="create-post-back">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="create-post-back">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{ar ? "منشور جديد" : "New Post"}</Text>

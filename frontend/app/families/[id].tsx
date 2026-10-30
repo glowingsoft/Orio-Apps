@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, FlatList, TextInput, Pressable, ActivityIndicat
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -11,6 +12,7 @@ import { apiFamilyGet, apiFamilyJoin, apiFamilyLeave, apiFamilyMessages, apiFami
 import { useAuth } from "@/src/auth-context";
 import { colors, spacing, radius } from "@/src/theme";
 import { VipBadge } from "@/src/components/VipBadge";
+import { FamilyLogo } from "@/src/families/FamilyLogo";
 
 export default function FamilyDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,8 +32,10 @@ export default function FamilyDetail() {
     refetchInterval: 3000,
   });
 
-  const join = useMutation({ mutationFn: () => apiFamilyJoin(id!), onSuccess: () => refetch() });
-  const leave = useMutation({ mutationFn: () => apiFamilyLeave(id!), onSuccess: () => refetch() });
+  // Keep the Families list (Join / Joined) in sync with membership changes here.
+  const syncLists = () => { refetch(); qc.invalidateQueries({ queryKey: ["families-mine"] }); qc.invalidateQueries({ queryKey: ["families"] }); };
+  const join = useMutation({ mutationFn: () => apiFamilyJoin(id!), onSuccess: syncLists });
+  const leave = useMutation({ mutationFn: () => apiFamilyLeave(id!), onSuccess: syncLists });
   const send = useMutation({
     mutationFn: (t: string) => apiFamilySendMessage(id!, t),
     onSuccess: () => refetchMsgs(),
@@ -55,13 +59,13 @@ export default function FamilyDetail() {
       <View style={{ paddingTop: insets.top }}>
         <LinearGradient colors={[colors.purple, colors.purpleDeep]} style={styles.hero}>
           <View style={styles.headerBar}>
-            <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn">
+            <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="back-btn">
               <Icon name="chevron-back" size={22} color="#FFF" />
             </Pressable>
             <View style={{ width: 40 }} />
           </View>
           <View style={styles.heroContent}>
-            <Image source={fam.logo_url} style={styles.logo} />
+            <FamilyLogo uri={fam.logo_url} name={fam.name} size={80} radius={20} style={styles.logo} />
             <Text style={styles.famName}>{fam.name}</Text>
             {fam.description && <Text style={styles.famDesc}>{fam.description}</Text>}
             <View style={styles.stats}>

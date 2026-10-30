@@ -3940,6 +3940,8 @@ def public_post(p: dict, my_id: str, liked: bool) -> dict:
         "image_url": p.get("image_url"),
         "images": p.get("images") or ([p["image_url"]] if p.get("image_url") else []),
         "video_url": p.get("video_url"),
+        "video_thumb_url": p.get("video_thumb_url"),
+        "video_duration": p.get("video_duration"),
         "hashtags": p.get("hashtags") or [],
         "visibility": p.get("visibility") or "public",
         "likes_count": p.get("likes_count", 0),
@@ -4134,6 +4136,16 @@ async def create_post(body: PostCreateIn, user=Depends(current_user)):
     tags = list(dict.fromkeys(tags))
     if not text and not images and not body.video_url:
         raise HTTPException(400, "Post cannot be empty")
+    # Thumbnail was made by the server when the video upload completed.
+    video_thumb_url = None
+    video_duration = float(body.video_duration) if body.video_url and body.video_duration is not None else None
+    vm = _MEDIA_URL_RE.search(body.video_url or "")
+    if vm:
+        vf = await db.media_files.find_one({"_id": ObjectId(vm.group(1))}, {"thumb_url": 1, "duration": 1})
+        video_thumb_url = (vf or {}).get("thumb_url")
+        # The upload's duration was measured from the file by the server — prefer it.
+        if (vf or {}).get("duration") is not None:
+            video_duration = float(vf["duration"])
     doc = {
         "author_id": str(user["_id"]),
         "author_pub": {
@@ -4147,6 +4159,8 @@ async def create_post(body: PostCreateIn, user=Depends(current_user)):
         "image_url": images[0] if images else None,
         "images": images,
         "video_url": body.video_url,
+        "video_thumb_url": video_thumb_url,
+        "video_duration": video_duration,
         "visibility": body.visibility,
         "hashtags": tags,
         "likes_count": 0,
@@ -4423,7 +4437,7 @@ async def create_family(body: FamilyCreateIn, user=Depends(current_user)):
     doc = {
         "name": body.name,
         "description": body.description or "",
-        "logo_url": body.logo_url or "https://images.unsplash.com/photo-1533377088493-8a7c3b3c4b04?w=400&h=400&fit=crop",
+        "logo_url": body.logo_url or None,  # no logo -> app shows a first-letter tile
         "owner_id": my_id,
         "admins": [my_id],
         "points": 0,
@@ -4612,14 +4626,14 @@ async def rankings_v2(
 
     # Iter-56 — Family leaderboard: top families by lifetime points.
     if category == "family":
-        cur = db.families.find({}, {"name": 1, "icon_url": 1, "cover_url": 1,
+        cur = db.families.find({}, {"name": 1, "logo_url": 1, "icon_url": 1, "cover_url": 1,
                                     "points": 1}).sort("points", -1).limit(50)
         rows = []
         async for r in cur:
             rows.append({
                 "id": str(r["_id"]),
                 "nickname": r.get("name") or "Family",
-                "avatar_url": r.get("icon_url") or r.get("cover_url"),
+                "avatar_url": r.get("logo_url") or r.get("icon_url") or r.get("cover_url"),
                 "score": int(r.get("points", 0) or 0),
                 "kind": "family",
             })
@@ -5396,6 +5410,11 @@ async def _auth_google_firebase(body: _FirebaseGoogleIn):
                 raise HTTPException(409, "This email is linked to a different Google account")
             await db.users.update_one({"_id": user["_id"]}, {"$set": {"firebase_uid": firebase_uid}})
     if user:
+        if _is_google_photo(user.get("avatar_url")):
+            import asyncio as _aio_av
+            task = _aio_av.create_task(_import_google_avatar_for(db, user))
+            _BG_TASKS.add(task)
+            task.add_done_callback(_BG_TASKS.discard)
         return await issue_pair(db, str(user["_id"]))
 
     from account_deletion import assert_credential_reusable as _reuse_ok
@@ -5437,6 +5456,8 @@ async def _auth_google_firebase(body: _FirebaseGoogleIn):
         "amount": 500, "balance_after": 500, "created_at": now_utc(),
         "status": "completed", "description": "Welcome to Yazeen!",
     })
+    if picture:
+        await _import_google_avatar_for(db, {"_id": ins.inserted_id, "avatar_url": picture})
     return await issue_pair(db, uid)
 
 
@@ -13903,7 +13924,7 @@ async def _rankings_v3(category: Literal["charm", "wealth", "cp", "friendship", 
         if fam:
             me_item = next((it for it in items if it.get("id") == str(fam["_id"])), None) or {
                 "rank": 0, "kind": "family", "id": str(fam["_id"]), "nickname": fam.get("name"),
-                "avatar_url": fam.get("icon_url") or fam.get("cover_url"), "score": int(fam.get("points", 0) or 0)}
+                "avatar_url": fam.get("logo_url") or fam.get("icon_url") or fam.get("cover_url"), "score": int(fam.get("points", 0) or 0)}
     elif not me_item:
         me_item = _rank_user_row(user, 0, 0)
     return {"items": items, "me": me_item}
@@ -14894,6 +14915,230 @@ def _storage_get(path: str) -> tuple:
     raise HTTPException(503, "Storage unavailable")
 
 
+def _ffmpeg_exe() -> Optional[str]:
+    """Bundled ffmpeg from imageio-ffmpeg (no system install needed), else one on PATH."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        import shutil
+        return shutil.which("ffmpeg")
+
+
+def _video_thumbnail(data: bytes, ext: str) -> Optional[bytes]:
+    """One JPEG frame (480px wide) from a video: at 1s, or the first frame for very short clips.
+    Best effort — returns None on any failure so uploads never fail because of it."""
+    exe = _ffmpeg_exe()
+    if not exe:
+        logging.getLogger(__name__).warning("Video thumbnail skipped: ffmpeg not available")
+        return None
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f"in.{ext or 'mp4'}"
+        out = Path(tmp) / "thumb.jpg"
+        src.write_bytes(data)
+        for seek in ("1", "0"):
+            try:
+                subprocess.run(
+                    [exe, "-y", "-loglevel", "error", "-ss", seek, "-i", str(src), "-frames:v", "1",
+                     "-vf", "scale=480:-2", "-q:v", "4", str(out)],
+                    check=True, timeout=30, capture_output=True,
+                )
+                if out.exists() and out.stat().st_size > 0:
+                    return out.read_bytes()
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Video thumbnail at {seek}s failed: {e}")
+    return None
+
+
+def _video_faststart(data: bytes, ext: str) -> bytes:
+    """Move the MP4/MOV index (moov) to the front so playback can start before the whole
+    file has downloaded. Stream copy only (no re-encode, same quality). Best effort:
+    returns the original bytes on any failure."""
+    if (ext or "").lower() not in ("mp4", "mov", "m4v"):
+        return data
+    exe = _ffmpeg_exe()
+    if not exe:
+        return data
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f"in.{ext}"
+        out = Path(tmp) / f"out.{ext}"
+        src.write_bytes(data)
+        try:
+            subprocess.run([exe, "-y", "-loglevel", "error", "-i", str(src), "-map", "0", "-c", "copy",
+                            "-movflags", "+faststart", str(out)], check=True, timeout=60, capture_output=True)
+            if out.exists() and out.stat().st_size > 0:
+                return out.read_bytes()
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Video faststart skipped: {e}")
+    return data
+
+
+def _video_transcode(data: bytes, ext: str) -> Optional[bytes]:
+    """Re-encode to MP4 (H.264 + AAC), long side ≤ 1280 px, phone-like bitrate, index at the
+    front. Turns e.g. a 39 MB / 5 s WebM into ~1–2 MB that starts instantly and also plays on
+    iPhones (no WebM there). Returns None on failure or if it would not be an improvement."""
+    exe = _ffmpeg_exe()
+    if not exe:
+        return None
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f"in.{ext or 'mp4'}"
+        out = Path(tmp) / "out.mp4"
+        src.write_bytes(data)
+        try:
+            subprocess.run(
+                [exe, "-y", "-loglevel", "error", "-i", str(src),
+                 "-map", "0:v:0", "-map", "0:a:0?",
+                 "-vf", "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-maxrate", "2500k", "-bufsize", "5000k",
+                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out)],
+                check=True, timeout=300, capture_output=True,
+            )
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Video transcode failed: {e}")
+            return None
+        if not out.exists() or out.stat().st_size == 0:
+            return None
+        result = out.read_bytes()
+    if (ext or "").lower() == "mp4" and len(result) >= len(data):
+        return None
+    return result
+
+
+_TRANSCODE_SEM = None  
+_BG_TASKS: set = set()  
+
+
+async def _transcode_video_bg(db, file_id: str, data: bytes, ext: str) -> Optional[dict]:
+    """Swap a stored video for its compressed MP4 (same media id / URL). Runs after the upload
+    has already been answered; the original stays in storage (`original_storage_path`)."""
+    global _TRANSCODE_SEM
+    import asyncio as _aio_tc
+    if _TRANSCODE_SEM is None:
+        _TRANSCODE_SEM = _aio_tc.Semaphore(1)
+    async with _TRANSCODE_SEM:
+        try:
+            out = await _run_in_threadpool(_video_transcode, data, ext)
+            if not out:
+                return None
+            f = await db.media_files.find_one({"_id": ObjectId(file_id)})
+            if not f or f.get("is_deleted") or f.get("transcoded"):
+                return None
+            old = f["storage_path"]
+            new = f"{old.rsplit('.', 1)[0]}_720.mp4"
+            res = await _run_in_threadpool(_storage_put, new, out, "video/mp4")
+            await db.media_files.update_one({"_id": f["_id"]}, {"$set": {
+                "storage_path": res.get("path", new), "mime": "video/mp4", "size": len(out), "transcoded": True,
+                "original_storage_path": old, "original_size": f.get("size"), "original_mime": f.get("mime"),
+            }})
+            _MEDIA_CACHE.pop(file_id, None)
+            logging.getLogger(__name__).info(f"Video {file_id} transcoded: {f.get('size')} -> {len(out)} bytes")
+            return {"before": f.get("size"), "after": len(out)}
+        except Exception:
+            logging.getLogger(__name__).exception(f"Video {file_id} background transcode failed")
+            return None
+
+
+def _is_google_photo(url: Optional[str]) -> bool:
+    return bool(url) and "googleusercontent.com" in str(url)
+
+
+def _fetch_remote_image(url: str) -> Optional[tuple]:
+    """Download a remote image (≤ 3 MB). Google photos are asked for at 256 px instead of 96."""
+    if _is_google_photo(url):
+        url = re.sub(r"=s\d+(-c)?$", "=s256-c", url)
+    try:
+        r = _requests.get(url, timeout=10)
+        ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if r.status_code != 200 or not ctype.startswith("image/") or not r.content or len(r.content) > 3 * 1024 * 1024:
+            logging.getLogger(__name__).warning(f"Avatar import skipped ({r.status_code}, {ctype}, {len(r.content or b'')} bytes)")
+            return None
+        return r.content, ctype
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Avatar import failed: {e}")
+        return None
+
+
+async def _import_avatar(db, uid: str, url: str) -> Optional[str]:
+    """Copy a remote avatar (e.g. a Google profile photo) into our storage and return our own
+    /api/media/files URL. Google photo links get rate-limited (HTTP 429) in browsers, which
+    showed as empty avatars; our copy is served like any other public image."""
+    got = await _run_in_threadpool(_fetch_remote_image, url)
+    if not got:
+        return None
+    data, ctype = got
+    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}.get(ctype, "jpg")
+    path = f"{_STORAGE_APP}/uploads/{uid}/avatar_{_uuid.uuid4().hex}.{ext}"
+    res = await _run_in_threadpool(_storage_put, path, data, ctype)
+    f = await db.media_files.insert_one({
+        "owner_id": uid, "storage_path": res.get("path", path), "mime": ctype, "kind": "image",
+        "size": len(data), "purpose": "avatar", "public": True, "imported_from": url,
+        "is_deleted": False, "created_at": now_utc(),
+    })
+    return f"/api/media/files/{f.inserted_id}"
+
+
+async def _import_google_avatar_for(db, user: dict) -> Optional[str]:
+    """If the user's avatar is still a Google photo link, replace it with our own copy."""
+    url = user.get("avatar_url")
+    if not _is_google_photo(url):
+        return None
+    try:
+        ours = await _import_avatar(db, str(user["_id"]), url)
+        if ours:
+            # Only swap if it wasn't changed meanwhile (e.g. the user uploaded a new photo).
+            await db.users.update_one({"_id": user["_id"], "avatar_url": url}, {"$set": {"avatar_url": ours}})
+        return ours
+    except Exception:
+        logging.getLogger(__name__).exception("Google avatar import failed")
+        return None
+
+
+def _video_duration(data: bytes, ext: str) -> Optional[float]:
+    """Real length in seconds, read by ffmpeg from the file (clients report it in different
+    units — the web picker gives seconds, phones milliseconds). None if it can't be read."""
+    exe = _ffmpeg_exe()
+    if not exe:
+        return None
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f"in.{ext or 'mp4'}"
+        src.write_bytes(data)
+        try:
+            # `ffmpeg -i` with no output exits non-zero but prints "Duration: HH:MM:SS.xx" to stderr.
+            r = subprocess.run([exe, "-hide_banner", "-i", str(src)], timeout=30, capture_output=True, text=True)
+            m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", r.stderr or "")
+            if m:
+                return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Video duration probe failed: {e}")
+    return None
+
+
+async def _store_video_thumbnail(db, video_doc: dict, data: bytes) -> Optional[str]:
+    """Create, store and link a thumbnail for a video media file; returns its URL or None."""
+    ext = (video_doc.get("storage_path") or "").rsplit(".", 1)[-1][:8]
+    thumb = await _run_in_threadpool(_video_thumbnail, data, ext)
+    if not thumb:
+        return None
+    path = f"{(video_doc.get('storage_path') or '').rsplit('.', 1)[0]}_thumb.jpg"
+    res = await _run_in_threadpool(_storage_put, path, thumb, "image/jpeg")
+    t = await db.media_files.insert_one({
+        "owner_id": video_doc.get("owner_id"), "storage_path": res.get("path", path), "mime": "image/jpeg",
+        "kind": "image", "size": len(thumb), "purpose": video_doc.get("purpose"), "public": bool(video_doc.get("public")),
+        "thumb_of": str(video_doc["_id"]), "is_deleted": False, "created_at": now_utc(),
+    })
+    url = f"/api/media/files/{t.inserted_id}"
+    await db.media_files.update_one({"_id": video_doc["_id"]}, {"$set": {"thumb_url": url}})
+    return url
+
+
 _MEDIA_URL_RE = re.compile(r"/api/media/files/([a-f0-9]{24})")
 
 
@@ -14933,8 +15178,10 @@ async def _media_init(body: _MediaInitIn, user=Depends(current_user)):
     mime = body.mime.lower()
     if not mime.startswith(body.kind + "/"):
         raise HTTPException(400, "Unsupported file type")
-    if body.kind == "video" and body.duration is not None and body.duration > 30.5:
-        raise HTTPException(400, "Video must be 30 seconds or shorter")
+
+    _video_max = 60.5 if body.purpose == "post" else 30.5
+    if body.kind == "video" and body.duration is not None and body.duration > _video_max:
+        raise HTTPException(400, f"Video must be {int(_video_max)} seconds or shorter")
     if body.kind == "audio" and (body.purpose != "chat" or (body.duration is not None and body.duration > 31)):
         raise HTTPException(400, "Voice messages must be 30 seconds or shorter")
     if body.kind == "video" and body.purpose == "chat":
@@ -14998,6 +15245,19 @@ async def _media_complete(body: _MediaCompleteIn, user=Depends(current_user)):
     data = part.read_bytes()
     ext = (up["mime"].split("/", 1)[1].split(";")[0] or "bin")[:8].replace("quicktime", "mov").replace("jpeg", "jpg").replace("x-m4a", "m4a").replace("mp4a-latm", "m4a")
     path = f"{_STORAGE_APP}/uploads/{uid}/{_uuid.uuid4().hex}.{ext}"
+    duration = up.get("duration")
+    if up["kind"] == "video":
+        data = await _run_in_threadpool(_video_faststart, data, ext)  # instant start when streamed
+        measured = await _run_in_threadpool(_video_duration, data, ext)
+        if measured:
+            duration = round(measured, 3)  # trust the file, not the client's number
+            limit = 10.5 if up["purpose"] == "gift" else (60.5 if up["purpose"] == "post" else 30.5)
+            if duration > limit:
+                try:
+                    part.unlink()
+                except Exception:
+                    pass
+                raise HTTPException(400, f"Video must be {int(limit)} seconds or shorter")
     res = await _run_in_threadpool(_storage_put, path, data, up["mime"])
     try:
         part.unlink()
@@ -15006,10 +15266,70 @@ async def _media_complete(body: _MediaCompleteIn, user=Depends(current_user)):
     f = await db.media_files.insert_one({
         "owner_id": uid, "storage_path": res.get("path", path), "mime": up["mime"], "kind": up["kind"],
         "size": len(data), "purpose": up["purpose"], "public": up["purpose"] in ("post", "cover", "gift"),
-        "duration": up.get("duration"), "is_deleted": False, "created_at": now_utc(),
+        "duration": duration, "is_deleted": False, "created_at": now_utc(),
     })
     await db.media_uploads.update_one({"_id": up["_id"]}, {"$set": {"status": "done", "file_id": str(f.inserted_id)}})
-    return {"id": str(f.inserted_id), "url": f"/api/media/files/{f.inserted_id}", "kind": up["kind"]}
+    thumb_url = None
+    if up["kind"] == "video":
+        try:
+            vdoc = await db.media_files.find_one({"_id": f.inserted_id})
+            thumb_url = await _store_video_thumbnail(db, vdoc, data)
+        except Exception:
+            logging.getLogger(__name__).exception("Video thumbnail failed")  # never fails the upload
+        # Post videos only: gift videos may be transparent WebM, which H.264 cannot keep.
+        if up["purpose"] == "post":
+            import asyncio as _aio_up
+            task = _aio_up.create_task(_transcode_video_bg(db, str(f.inserted_id), data, ext))
+            _BG_TASKS.add(task)
+            task.add_done_callback(_BG_TASKS.discard)
+    return {"id": str(f.inserted_id), "url": f"/api/media/files/{f.inserted_id}", "kind": up["kind"], "thumb_url": thumb_url}
+
+
+def _s3_open_range(path: str, byte_range: str):
+    try:
+        return _s3().get_object(Bucket=_S3_BUCKET, Key=path, Range=byte_range)
+    except Exception as e:
+        code = getattr(e, "response", {}).get("Error", {}).get("Code") if hasattr(e, "response") else None
+        if code in ("NoSuchKey", "404"):
+            raise HTTPException(404, "Not found")
+        logging.getLogger(__name__).exception("S3 range download failed")
+        raise HTTPException(503, "Storage unavailable")
+
+
+async def _media_stream_s3(f: dict, size: int, request: _Request):
+    """Serve one byte range of a stored file from S3 as a stream (206 for Range requests)."""
+    from fastapi.responses import StreamingResponse
+    rng = request.headers.get("range")
+    m = re.match(r"bytes=(\d*)-(\d*)", rng or "")
+    if m and (m.group(1) or m.group(2)):
+        start = int(m.group(1)) if m.group(1) else max(0, size - int(m.group(2)))
+        end = int(m.group(2)) if (m.group(1) and m.group(2)) else size - 1
+        end = min(end, size - 1)
+        if start > end:
+            return _Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+        partial = True
+    else:
+        start, end, partial = 0, size - 1, False
+    obj = await _run_in_threadpool(_s3_open_range, f["storage_path"], f"bytes={start}-{end}")
+    body = obj["Body"]
+
+    def chunks():
+        try:
+            for c in body.iter_chunks(chunk_size=256 * 1024):
+                yield c
+        finally:
+            body.close()
+
+    # ETag follows the stored object, so when a video is swapped for its compressed MP4 (same
+    # URL) browsers never mix byte ranges of the old and new file; they revalidate after 1 h.
+    import hashlib
+    etag = '"' + hashlib.md5(f["storage_path"].encode()).hexdigest()[:16] + '"'
+    headers = {"Cache-Control": "public, max-age=3600" if f.get("public") else "private, max-age=3600",
+               "Accept-Ranges": "bytes", "Content-Length": str(end - start + 1), "ETag": etag}
+    if partial:
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    return StreamingResponse(chunks(), status_code=206 if partial else 200,
+                             media_type=f.get("mime") or obj.get("ContentType") or "application/octet-stream", headers=headers)
 
 
 @api.get("/media/files/{file_id}")
@@ -15033,6 +15353,10 @@ async def _media_get(file_id: str, request: _Request, t: Optional[str] = None):
                           and not viewer.get("admin_access") and not viewer.get("is_admin")):
             raise HTTPException(403, "Forbidden")
     cached = _MEDIA_CACHE.get(file_id)
+    size = int(f.get("size") or 0)
+
+    if cached is None and _S3_BUCKET and size > 0 and (f.get("kind") in ("video", "audio") or size > 2 * 1024 * 1024):
+        return await _media_stream_s3(f, size, request)
     if cached is None:
         data, ctype = await _run_in_threadpool(_storage_get, f["storage_path"])
         ctype = f.get("mime") or ctype

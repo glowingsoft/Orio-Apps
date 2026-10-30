@@ -19,6 +19,7 @@ import {
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -178,7 +179,7 @@ export default function RoomInfoScreen() {
           />
           {/* Header buttons overlay */}
           <View style={styles.coverHeader}>
-            <Pressable testID="room-info-back" onPress={() => router.back()} style={styles.roundBtn}>
+            <Pressable testID="room-info-back" onPress={() => safeBack(router)} style={styles.roundBtn}>
               <Icon name="chevron-back" size={22} color={colors.onSurface} />
             </Pressable>
             <View style={{ flexDirection: "row", gap: 8 }}>

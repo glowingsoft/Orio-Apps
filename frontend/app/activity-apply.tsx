@@ -3,6 +3,7 @@ import { pickAndCrop } from "@/src/media/ImageCropper";
 import { View, Text, StyleSheet, Pressable, TextInput, ActivityIndicator, Linking } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -83,7 +84,7 @@ export default function ActivityApply() {
           <Text style={styles.doneText}>
             {ar ? "تم إرسال طلب النشاط الخاص بك بنجاح. ستقوم الإدارة بمراجعته." : "Your activity application was submitted successfully. The administration will review it."}
           </Text>
-          <Pressable testID="activity-apply-back" onPress={() => router.back()} style={[styles.confirm, { alignSelf: "stretch" }]}>
+          <Pressable testID="activity-apply-back" onPress={() => safeBack(router)} style={[styles.confirm, { alignSelf: "stretch" }]}>
             <Text style={styles.confirmText}>{ar ? "حسناً" : "OK"}</Text>
           </Pressable>
         </View>

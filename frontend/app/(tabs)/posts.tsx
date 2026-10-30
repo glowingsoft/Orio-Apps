@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import {
   apiPosts,
   apiLikePost,
@@ -169,7 +170,7 @@ export default function Posts() {
       <TabBackground />
       {authorId ? (
         <View style={[styles.header]}>
-          <Pressable testID="user-posts-back" onPress={() => router.back()} hitSlop={10}>
+          <Pressable testID="user-posts-back" onPress={() => safeBack(router)} hitSlop={10}>
             <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={26} color={colors.onSurface} />
           </Pressable>
           <Text style={styles.feedTabTextActive}>{isRTL ? "المنشورات" : "Posts"}</Text>
@@ -287,7 +288,7 @@ export default function Posts() {
                 <Text style={[styles.postText, isRTL && { textAlign: "right" }]}>{item.text}</Text>
               )}
 
-              <PostMedia testID={`post-media-${item.id}`} images={(item as any).images?.length ? (item as any).images : (item.image_url ? [item.image_url] : [])} video={(item as any).video_url} />
+              <PostMedia testID={`post-media-${item.id}`} images={(item as any).images?.length ? (item as any).images : (item.image_url ? [item.image_url] : [])} video={(item as any).video_url} videoThumb={(item as any).video_thumb_url} videoDuration={(item as any).video_duration} />
               {!!(item as any).hashtags?.length && (
                 <Text style={[styles.postTags, isRTL && { textAlign: "right" }]} testID={`post-tags-${item.id}`}>
                   {(item as any).hashtags.map((h: string) => `#${h}`).join("  ")}

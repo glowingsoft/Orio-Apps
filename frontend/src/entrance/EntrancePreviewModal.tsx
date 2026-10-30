@@ -33,7 +33,9 @@ function PreviewBody({ fx, onClose }: { fx: EntranceFx; onClose: () => void }) {
   return (
     <View style={styles.backdrop} testID="entrance-preview">
       <View style={[styles.frame, { width: w, height: w * 16 / 9, borderColor: fx.accent + "88", shadowColor: fx.tint }]}>
-        <VideoView testID="entrance-preview-video" player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
+        <View style={StyleSheet.absoluteFill}>
+          <VideoView testID="entrance-preview-video" player={player} style={{ width: "100%", height: "100%" }} contentFit="contain" nativeControls={false} />
+        </View>
         {status === "loading" && <View style={styles.center}><Icon name="hourglass-outline" size={28} color={fx.accent} /></View>}
         {status === "readyToPlay" && !isPlaying && (
           <Pressable testID="entrance-preview-replay" onPress={replay} style={styles.center}>

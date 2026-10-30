@@ -9,6 +9,7 @@ import {
   View, Text, Pressable, StyleSheet, ActivityIndicator,
 } from "react-native";
 import { useRouter, Stack } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useI18n, type Lang } from "@/src/i18n";
@@ -35,7 +36,7 @@ export default function LanguageScreen() {
   const onPick = async (code: Lang) => {
     if (applying) return;
     if (code === lang) {
-      router.back();
+      safeBack(router);
       return;
     }
     setApplying(code);
@@ -59,7 +60,7 @@ export default function LanguageScreen() {
 
       {/* Header */}
       <View style={[styles.header, { flexDirection: "row" }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="language-back">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="language-back">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{t.chooseLanguage || "Choose Language"}</Text>

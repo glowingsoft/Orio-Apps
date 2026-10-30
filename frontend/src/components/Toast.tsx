@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 // Official ORIO planet logo (user-supplied artwork, untouched colors).
-const TOAST_LOGO = require("../../assets/images/orio-toast-logo.png");
+const TOAST_LOGO = require("../../assets/images/yazeen-logo-small.png");
 import { colors, spacing } from "@/src/theme";
 import { useI18n } from "@/src/i18n";
 

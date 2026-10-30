@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, Switch, Alert } from "react-native";
 import { useRouter } from "expo-router";
+import { safeBack } from "@/src/navigation/safeBack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useEffect, useState } from "react";
@@ -125,7 +126,7 @@ export default function Settings() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]} testID="settings-screen">
       <View style={[styles.header, { flexDirection: "row" }]}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="back-btn">
+        <Pressable onPress={() => safeBack(router)} style={styles.iconBtn} testID="back-btn">
           <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{t.settings || "Settings"}</Text>

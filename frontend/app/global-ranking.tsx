@@ -22,6 +22,7 @@ const CATEGORIES = [
 function toEntry(row: any): RankEntry {
   if (!row) return row;
   if (row.kind === "room") return { rank: row.rank, score: row.score, kind: "room", room: row.room };
+  if (Array.isArray(row.pair)) return { rank: row.rank ?? 0, score: Number(row.score ?? 0), kind: "pair", pair: row.pair };
   return { rank: row.rank ?? 0, score: Number(row.score ?? 0), kind: row.kind ?? "user", user: row };
 }
 

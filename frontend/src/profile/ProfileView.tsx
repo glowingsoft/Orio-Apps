@@ -22,7 +22,7 @@ import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/components/Toast";
 import {
   apiGetUser, apiMyRooms,
-  apiFriendship, apiCp, apiFamiliesMine,
+  apiFriendship, apiCp, apiFamiliesMine, apiCpRequest, apiFriendshipRequest, apiCpRemove,
   apiFollow, apiUnfollow, apiBlockUser, apiUnblockUser, apiReportUser, apiUserPosts,
   apiRecordView,
   getAccessToken,
@@ -37,6 +37,9 @@ import { LevelBoxes } from "@/src/levels/LevelBoxes";
 import { RoomCard } from "@/src/components/RoomCard";
 import { NewUserBadge } from "@/src/components/NewUserBadge";
 import { OrioRefreshControl } from "@/src/components/OrioRefreshControl";
+import { FamilyLogo } from "@/src/families/FamilyLogo";
+import { AvatarImage } from "@/src/components/AvatarImage";
+import { confirmAction } from "@/src/utils/confirm";
 
 type Tab = "profile" | "honor" | "relationships";
 
@@ -65,8 +68,8 @@ export function ProfileView({ userId }: { userId?: string }) {
   const onRefresh = () => {
     refetch();
     qc.invalidateQueries({ queryKey: ["user-posts"] });
-    qc.invalidateQueries({ queryKey: ["profile-friends", targetId] });
-    qc.invalidateQueries({ queryKey: ["profile-cp", targetId] });
+    qc.invalidateQueries({ queryKey: ["my-friendships"] });
+    qc.invalidateQueries({ queryKey: ["my-cps"] });
     qc.invalidateQueries({ queryKey: ["profile-rooms", targetId] });
   };
 
@@ -97,6 +100,10 @@ export function ProfileView({ userId }: { userId?: string }) {
   }, []);
   // Suppress unused warning while we keep the placeholder above.
   void share;
+
+
+  useQuery({ queryKey: ["my-friendships"], queryFn: apiFriendship, staleTime: 30_000 });
+  useQuery({ queryKey: ["my-cps"], queryFn: apiCp, staleTime: 30_000 });
 
   // Iter-30: sticky Follow → Chat CTA at the bottom of another user's profile.
   const isFollowing = !!user?.is_following;
@@ -253,7 +260,7 @@ export function ProfileView({ userId }: { userId?: string }) {
                 style={styles.circleBtn}
                 accessibilityLabel="Edit profile"
               >
-                <Icon name="pencil" size={16} color={colors.onSurface} />
+                <Icon name="pencil" size={16} color={COVER_ICON} />
               </Pressable>
             ) : (
               <Pressable
@@ -262,7 +269,7 @@ export function ProfileView({ userId }: { userId?: string }) {
                 style={styles.circleBtn}
                 accessibilityLabel="More options"
               >
-                <Icon name="ellipsis-horizontal" size={18} color={colors.onSurface} />
+                <Icon name="ellipsis-horizontal" size={18} color={COVER_ICON} />
               </Pressable>
             )}
             <View style={{ flex: 1 }} />
@@ -275,13 +282,13 @@ export function ProfileView({ userId }: { userId?: string }) {
               style={styles.circleBtn}
               accessibilityLabel="Back"
             >
-              <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={20} color={colors.onSurface} />
+              <Icon name={isRTL ? "chevron-forward" : "chevron-back"} size={20} color={COVER_ICON} />
             </Pressable>
           </View>
 
           {/* Centered avatar — Iter-99: tap to view the photo. */}
           <Pressable testID="profile-avatar-view" onPress={() => imageViewer.show(user.avatar_url)} style={styles.avatarRing}>
-            <Image source={user.avatar_url} style={styles.avatar} contentFit="cover" transition={200} />
+            <AvatarImage uri={user.avatar_url} name={user.nickname} style={styles.avatar} transition={200} />
           </Pressable>
         </View>
 
@@ -301,7 +308,7 @@ export function ProfileView({ userId }: { userId?: string }) {
               <MarqueeText
                 text={user.nickname || t.userFallback}
                 maxWidth={260}
-                style={[styles.name, (user as any).name_color === "red" && { color: "#FF3B30" }]}
+                style={(user as any).name_color === "red" ? [styles.name, { color: "#FF3B30" }] : styles.name}
               />
             )}
           </View>
@@ -701,16 +708,13 @@ function ProfileTab({ user, isOwner, isRTL, t }: any) {
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.familyBanner}>
-            <Image
-              source={myFamilies[0].cover_url || myFamilies[0].avatar_url || user.avatar_url}
-              style={styles.familyBannerImg}
-              contentFit="cover"
-            />
+            {/* Families store their picture in logo_url (letter tile when there is none). */}
+            <FamilyLogo uri={myFamilies[0].logo_url} name={myFamilies[0].name} size={76} radius={10} />
           </View>
           <View style={styles.familyCardBody}>
             <Text style={styles.familyName} numberOfLines={1}>{myFamilies[0].name}</Text>
             <View style={styles.familyMembersPill}>
-              <Icon name="people" size={11} color={colors.onSurface} />
+              <Icon name="people" size={11} color="#FFFFFF" />
               <Text style={styles.familyMembersText}>{myFamilies[0].members_count ?? 0}</Text>
             </View>
           </View>
@@ -796,7 +800,7 @@ function HonorTab({ user, isRTL, t }: any) {
           </View>
         ) : (
           <View style={styles.emptyGallery}>
-            <Icon name="ribbon-outline" size={36} color={colors.muted} />
+            <Icon name="ribbon-outline" size={36} color="rgba(255,255,255,0.6)" />
             <Text style={styles.emptyGalleryText}>{t.noMedalsYet || "No medals earned yet"}</Text>
           </View>
         )}
@@ -812,7 +816,7 @@ function HonorTab({ user, isRTL, t }: any) {
           </View>
         ) : (
           <View style={styles.emptyGallery}>
-            <Icon name="shirt-outline" size={36} color={colors.muted} />
+            <Icon name="shirt-outline" size={36} color="rgba(255,255,255,0.6)" />
             <Text style={styles.emptyGalleryText}>{t.noFashionYet || "No fashion owned yet"}</Text>
           </View>
         )}
@@ -839,7 +843,7 @@ function GalleryFrame({ title, rtl, tone, children }: any) {
 
 function GalleryTile({ image, label, count, locked }: any) {
   return (
-    <View style={[styles.galleryTile, locked && { opacity: 0.35 }]}>
+    <View style={[styles.galleryTile, locked && { opacity: 0.55 }]}>
       <View style={styles.galleryTileImgWrap}>
         {image ? (
           <Image source={image} style={{ width: "100%", height: "100%" }} contentFit="contain" />
@@ -861,15 +865,17 @@ function GalleryTile({ image, label, count, locked }: any) {
 
 function RelationshipsTab({ user, isOwner, isRTL, t }: any) {
   const router = useRouter();
-  const { data: friends = [] } = useQuery({
-    queryKey: ["profile-friends", user.id],
+
+  const qc = useQueryClient();
+  const { data: friends = [], isPending: friendsLoading } = useQuery({
+    queryKey: ["my-friendships"],
     queryFn: apiFriendship,
-    enabled: isOwner,
+    staleTime: 30_000,
   });
-  const { data: cps = [] } = useQuery({
-    queryKey: ["profile-cp", user.id],
+  const { data: cps = [], isPending: cpsLoading } = useQuery({
+    queryKey: ["my-cps"],
     queryFn: apiCp,
-    enabled: isOwner,
+    staleTime: 30_000,
   });
 
   const acceptedFriends = useMemo(
@@ -880,24 +886,107 @@ function RelationshipsTab({ user, isOwner, isRTL, t }: any) {
     () => (cps || []).find((c: any) => c.status === "accepted"),
     [cps]
   );
+  const cpPeer = relPeer(activeCp);
+  const incomingCp = useMemo(
+    () => (cps || []).filter((c: any) => c.status === "pending" && !c.requested_by_me),
+    [cps]
+  );
+
+  type RelState = "none" | "sent" | "incoming" | "accepted";
+  const relState = (list: any[]): RelState => {
+    const r = (list || []).find((x: any) => relPeer(x)?.id === user.id);
+    if (!r) return "none";
+    if (r.status === "accepted") return "accepted";
+    if (r.status === "pending") return r.requested_by_me ? "sent" : "incoming";
+    return "none";
+  };
+  const friendState = relState(friends);
+  const cpWithThem = relState(cps);
+  const cpState: RelState | "taken" = cpWithThem === "accepted" ? "accepted" : activeCp ? "taken" : cpWithThem;
+
+  const toast = useToast();
+  const errMsg = (e: any) => e?.message || (isRTL ? "تعذّر إرسال الطلب" : "Could not send the request");
+  const cpReq = useMutation({
+    mutationFn: () => apiCpRequest(user.id),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["my-cps"] });
+      toast.show({ kind: "success", message: r?.status === "accepted" ? (isRTL ? "أصبحتما CP!" : "You are now CP!") : (isRTL ? "تم إرسال طلب CP" : "CP request sent") });
+    },
+    onError: (e: any) => toast.show({ kind: "error", message: errMsg(e) }),
+  });
+  const friendReq = useMutation({
+    mutationFn: () => apiFriendshipRequest(user.id),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["my-friendships"] });
+      toast.show({ kind: "success", message: r?.status === "accepted" ? (isRTL ? "أصبحتما صديقين!" : "You are now friends!") : (isRTL ? "تم إرسال طلب الصداقة" : "Friend request sent") });
+    },
+    onError: (e: any) => toast.show({ kind: "error", message: errMsg(e) }),
+  });
+  const cpWithdraw = useMutation({
+    mutationFn: () => apiCpRemove(user.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-cps"] });
+      toast.show({ kind: "success", message: isRTL ? "تم سحب طلب CP" : "CP request withdrawn" });
+    },
+    onError: (e: any) => toast.show({ kind: "error", message: errMsg(e) }),
+  });
+  // Confirm first, with the app's confirmation modal.
+  const confirmWithdrawCp = async () => {
+    const ok = await confirmAction({
+      title: isRTL ? "سحب طلب CP؟" : "Withdraw CP request?",
+      message: isRTL ? `سيتم إلغاء طلبك إلى ${user.nickname || ""}.` : `Your request to ${user.nickname || "this user"} will be cancelled.`,
+      confirmText: isRTL ? "سحب" : "Withdraw",
+      cancelText: isRTL ? "إلغاء" : "Cancel",
+      destructive: true,
+    });
+    if (ok) cpWithdraw.mutate();
+  };
+  const cpAction = {
+    none: { icon: "add", label: isRTL ? "طلب CP" : "Request CP", enabled: true },
+    // Pending request from the viewer: tapping it offers to withdraw it.
+    sent: { icon: "close", label: isRTL ? "تم إرسال الطلب" : "Request sent", sub: isRTL ? "اضغط للسحب" : "Tap to withdraw", enabled: true },
+    incoming: { icon: "heart", label: isRTL ? "قبول طلب CP" : "Accept CP", enabled: true },
+    accepted: { icon: "heart", label: isRTL ? "شريكك CP" : "Your CP", enabled: false },
+    taken: { icon: "lock-closed", label: isRTL ? "لديك CP بالفعل" : "You have a CP", enabled: false },
+  }[cpState] as { icon: any; label: string; sub?: string; enabled: boolean };
+  const friendAction = {
+    none: { icon: "person-add", label: t.addFriend || "Add Friend", enabled: true },
+    sent: { icon: "checkmark", label: isRTL ? "تم إرسال الطلب" : "Request sent", enabled: false },
+    incoming: { icon: "person-add", label: isRTL ? "قبول طلب الصداقة" : "Accept friend request", enabled: true },
+    accepted: { icon: "checkmark-circle", label: isRTL ? "أصدقاء" : "Friends", enabled: false },
+  }[friendState] as { icon: any; label: string; enabled: boolean };
+
+
+  if (friendsLoading || cpsLoading) {
+    return (
+      <View style={styles.tabBody} testID="relationships-loading">
+        <View style={[styles.relSkeleton, { height: 140, marginTop: spacing.xl }]}>
+          <ActivityIndicator color={colors.brandPrimary} />
+        </View>
+        <View style={[styles.relSkeleton, { height: 120, marginTop: spacing.xl }]} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.tabBody}>
-      {/* Rank button (top) */}
-      <Pressable
-        testID="rel-request"
-        onPress={() => router.push("/friendship")}
-        style={styles.notifyBar}
-      >
-        <Icon name="notifications-outline" size={16} color={colors.gold} />
-        <Text style={styles.notifyText}>{t.relationshipRequests || "Relationship requests"}</Text>
-        <View style={{ flex: 1 }} />
-        <Icon name={isRTL ? "chevron-back" : "chevron-forward"} size={16} color={colors.muted} />
-      </Pressable>
+      {/* Own profile only: the viewer's incoming relationship requests. */}
+      {isOwner && (
+        <Pressable
+          testID="rel-request"
+          onPress={() => router.push("/friendship")}
+          style={styles.notifyBar}
+        >
+          <Icon name="notifications-outline" size={16} color={colors.gold} />
+          <Text style={styles.notifyText}>{t.relationshipRequests || "Relationship requests"}</Text>
+          <View style={{ flex: 1 }} />
+          <Icon name={isRTL ? "chevron-back" : "chevron-forward"} size={16} color={colors.muted} />
+        </Pressable>
+      )}
 
       {/* CP section header row */}
       <View style={[styles.cpHeaderRow]}>
-        <Text style={styles.cpHeaderTitle}>{t.myCP || "My CP"}</Text>
+        <Text style={styles.cpHeaderTitle}>{isOwner ? (t.myCP || "My CP") : "CP"}</Text>
         <Pressable
           testID="cp-privileges"
           onPress={() => router.push("/cp")}
@@ -928,53 +1017,74 @@ function RelationshipsTab({ user, isOwner, isRTL, t }: any) {
         <View style={styles.cpCardRow}>
           <Pressable
             testID="cp-partner-slot"
-            onPress={() => router.push("/cp")}
-            style={styles.cpSlot}
+            onPress={() => (isOwner ? router.push((activeCp ? "/cp" : "/search") as any) : cpState === "sent" ? confirmWithdrawCp() : cpReq.mutate())}
+            disabled={!isOwner && (!cpAction.enabled || cpReq.isPending || cpWithdraw.isPending)}
+            style={[styles.cpSlot, !isOwner && !cpAction.enabled && { opacity: 0.85 }]}
           >
-            {activeCp?.partner ? (
+            {isOwner && cpPeer ? (
               <>
-                <Image source={activeCp.partner.avatar_url} style={styles.cpSlotImage} contentFit="cover" />
-                <VipName style={styles.cpSlotName} numberOfLines={1} name={activeCp.partner?.nickname} color={(activeCp.partner as any)?.name_color} vipLevel={(activeCp.partner as any)?.vip_level} />
+                <AvatarImage uri={cpPeer.avatar_url} name={cpPeer.nickname} style={styles.cpSlotImage} />
+                <VipName style={styles.cpSlotName} numberOfLines={1} name={cpPeer.nickname} color={cpPeer.name_color} vipLevel={cpPeer.vip_level} />
               </>
-            ) : (
+            ) : isOwner ? (
               <>
                 <View style={styles.cpSlotEmpty}>
                   <Icon name="add" size={26} color="#FFF" />
                 </View>
-                <Text style={styles.cpSlotName}>—</Text>
+                <Text style={styles.cpSlotName}>{isRTL ? "إضافة CP" : "Add CP"}</Text>
+              </>
+            ) : (
+              // Someone else's profile: the viewer's CP status with them (request / sent / accept / partners).
+              <>
+                <View style={styles.cpSlotEmpty}>
+                  {cpReq.isPending || cpWithdraw.isPending ? <ActivityIndicator color="#FFF" /> : <Icon name={cpAction.icon} size={26} color="#FFF" />}
+                </View>
+                <Text style={styles.cpSlotName} numberOfLines={1}>{cpAction.label}</Text>
+                {!!cpAction.sub && <Text style={styles.cpSlotSub} numberOfLines={1}>{cpAction.sub}</Text>}
               </>
             )}
           </Pressable>
 
           <View style={styles.cpMiddle}>
             <Icon name="heart" size={32} color="#FFF" />
-            {!activeCp && (
-              <View style={styles.cpBadge}>
-                <Text style={styles.cpBadgeText}>{t.noCp || "No CP"}</Text>
-              </View>
+            {/* Only on the own profile: we don't know someone else's CP status. */}
+            {isOwner && !activeCp && (
+              <>
+                <View style={styles.cpBadge}>
+                  <Text style={styles.cpBadgeText}>{isRTL ? "لا يوجد CP بعد" : "No CP yet"}</Text>
+                </View>
+              </>
             )}
           </View>
 
           <View style={styles.cpSlot}>
-            <Image source={user.avatar_url} style={styles.cpSlotImage} contentFit="cover" />
+            <AvatarImage uri={user.avatar_url} name={user.nickname} style={styles.cpSlotImage} />
             <VipName style={styles.cpSlotName} numberOfLines={1} name={user?.nickname} color={(user as any)?.name_color} vipLevel={(user as any)?.vip_level} />
           </View>
         </View>
-
         {isOwner && !activeCp && (
-          <Pressable
-            testID="cp-invite-btn"
-            onPress={() => router.push("/cp?openSearch=1" as any)}
-            style={styles.cpMicBtn}
-          >
-            <Icon name="search" size={16} color={colors.onSurface} />
-          </Pressable>
+          <View style={styles.cpActionsRow}>
+            {incomingCp.length > 0 && (
+              <Pressable testID="cp-requests-btn" onPress={() => router.push("/cp" as any)} style={[styles.cpFindBtn, styles.cpRequestsBtn]}>
+                <Icon name="heart" size={13} color="#FFFFFF" />
+                <Text style={styles.cpFindText}>
+                  {isRTL
+                    ? `${incomingCp.length} ${incomingCp.length === 1 ? "طلب CP" : "طلبات CP"}`
+                    : `${incomingCp.length} CP request${incomingCp.length === 1 ? "" : "s"}`}
+                </Text>
+              </Pressable>
+            )}
+            <Pressable testID="cp-invite-btn" onPress={() => router.push("/search" as any)} style={styles.cpFindBtn}>
+              <Icon name="search" size={13} color="#FFFFFF" />
+              <Text style={styles.cpFindText}>{isRTL ? "ابحث عن CP" : "Find a CP"}</Text>
+            </Pressable>
+          </View>
         )}
       </View>
 
       {/* Friends header */}
       <View style={[styles.friendsHeader]}>
-        <Text style={styles.friendsHeaderTitle}>{t.myFriends || "My Friends"}</Text>
+        <Text style={styles.friendsHeaderTitle}>{isOwner ? (t.myFriends || "My Friends") : (isRTL ? "الأصدقاء" : "Friends")}</Text>
         <View style={{ flex: 1 }} />
         <Pressable
           testID="friends-ranking"
@@ -986,8 +1096,30 @@ function RelationshipsTab({ user, isOwner, isRTL, t }: any) {
         </Pressable>
       </View>
 
-      {/* Friends grid */}
-      <View style={styles.friendsGrid}>
+      {/* Someone else's profile: their friends list isn't available, so offer a friend request. */}
+      {!isOwner && (
+        <View style={[styles.friendsGrid, styles.friendRequestCard]}>
+          <Icon name="people-outline" size={30} color="rgba(255,255,255,0.7)" />
+          <Pressable
+            testID="profile-add-friend"
+            onPress={() => friendReq.mutate()}
+            disabled={!friendAction.enabled || friendReq.isPending}
+            style={[styles.friendRequestBtn, !friendAction.enabled && styles.friendRequestBtnDone]}
+          >
+            {friendReq.isPending ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <>
+                <Icon name={friendAction.icon} size={16} color="#FFF" />
+                <Text style={styles.friendRequestText}>{friendAction.label}</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      )}
+
+      {/* Friends grid (own profile) */}
+      {isOwner && <View style={styles.friendsGrid}>
         {[0, 1, 2, 3, 4, 5].map((i) => {
           const f = acceptedFriends[i];
           return (
@@ -996,30 +1128,35 @@ function RelationshipsTab({ user, isOwner, isRTL, t }: any) {
               friend={f}
               isOwner={isOwner}
               t={t}
-              onInvite={() => router.push("/friendship?openSearch=1" as any)}
-              onOpen={f ? () => router.push(`/user/${f.partner?.id}` as any) : undefined}
+              onInvite={() => router.push("/search" as any)}
+              onOpen={f ? () => router.push(`/user/${relPeer(f)?.id}` as any) : undefined}
             />
           );
         })}
-      </View>
+      </View>}
     </View>
   );
 }
 
+function relPeer(rel: any): any {
+  return rel?.other ?? rel?.partner ?? null;
+}
+
 function FriendSlot({ friend, isOwner, t, onInvite, onOpen }: any) {
+  const peer = relPeer(friend);
   return (
     <View style={styles.friendSlot}>
       {friend ? (
-        <Pressable onPress={onOpen} style={styles.friendSlotInner} testID={`friend-slot-${friend.partner?.id}`}>
-          <Image source={friend.partner?.avatar_url} style={styles.friendAvatar} contentFit="cover" />
-          <VipName style={styles.friendName} numberOfLines={1} name={friend.partner?.nickname} color={(friend.partner as any)?.name_color} vipLevel={(friend.partner as any)?.vip_level} />
+        <Pressable onPress={onOpen} style={styles.friendSlotInner} testID={`friend-slot-${peer?.id}`}>
+          <AvatarImage uri={peer?.avatar_url} name={peer?.nickname} style={styles.friendAvatar} />
+          <VipName style={styles.friendName} numberOfLines={1} name={peer?.nickname} color={peer?.name_color} vipLevel={peer?.vip_level} />
         </Pressable>
       ) : (
         <View style={styles.friendSlotInner}>
           <View style={[styles.friendAvatar, styles.friendAvatarEmpty]}>
-            <Icon name="person-outline" size={30} color={colors.muted} />
+            <Icon name="person-outline" size={30} color="rgba(255,255,255,0.55)" />
           </View>
-          <Text style={[styles.friendName, { color: colors.muted }]}>{t.none || "None"}</Text>
+          <Text style={[styles.friendName, { color: "rgba(255,255,255,0.6)" }]}>{t.none || "None"}</Text>
           {isOwner && (
             <Pressable testID="friend-invite" onPress={onInvite} style={styles.friendInviteBtn}>
               <Text style={styles.friendInviteText}>{t.invite || "Invite"}</Text>
@@ -1050,6 +1187,7 @@ function EmptyState({ icon, text }: { icon: any; text: string }) {
 // ---------- Styles ----------
 
 const AVATAR_SIZE = 108;
+const COVER_ICON = "#FFFFFF";
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
@@ -1285,14 +1423,13 @@ const styles = StyleSheet.create({
     width: 80, height: 80, borderRadius: 12, overflow: "hidden",
     borderWidth: 2, borderColor: "#FFD68A",
   },
-  familyBannerImg: { width: "100%", height: "100%" },
   familyCardBody: { flex: 1, gap: 6 },
-  familyName: { color: colors.onSurface, fontSize: 16, fontWeight: "800" },
+  familyName: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
   familyMembersPill: {
     alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 4,
     backgroundColor: "rgba(0,0,0,0.35)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill,
   },
-  familyMembersText: { color: colors.onSurface, fontSize: 11, fontWeight: "700" },
+  familyMembersText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
 
   // Posts row
   postsRow: { flexDirection: "row", gap: 8, paddingRight: spacing.md, paddingVertical: 4 },
@@ -1321,7 +1458,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(255,255,255,0.1)",
   },
-  galleryTitle: { color: colors.gold, fontWeight: "800", letterSpacing: 0.4, fontSize: 13 },
+  galleryTitle: { color: "#FFE3A3", fontWeight: "800", letterSpacing: 0.4, fontSize: 13 },
 
   galleryRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" },
   galleryTile: {
@@ -1340,9 +1477,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gold,
   },
   galleryTileCountText: { color: colors.onBrandPrimary, fontSize: 10, fontWeight: "800" },
-  galleryTileLabel: { color: colors.onSurface, fontSize: 10, marginTop: 2, textAlign: "center" },
+  galleryTileLabel: { color: "rgba(255,255,255,0.9)", fontSize: 10, marginTop: 2, textAlign: "center" },
   emptyGallery: { alignItems: "center", paddingVertical: spacing.lg, gap: 4 },
-  emptyGalleryText: { color: colors.muted, fontSize: 12 },
+  emptyGalleryText: { color: "rgba(255,255,255,0.7)", fontSize: 12 },
 
   // Relationships
   notifyBar: {
@@ -1363,14 +1500,19 @@ const styles = StyleSheet.create({
   cpRankPillText: { color: "#FFD1E7", fontSize: 11, fontWeight: "800" },
 
   cpCard: {
-    marginTop: spacing.sm, height: 140,
+    marginTop: spacing.sm, minHeight: 140,
     borderRadius: radius.lg, overflow: "hidden",
     borderWidth: 1, borderColor: "rgba(255,182,193,0.25)",
     position: "relative",
   },
   cpCardRow: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    minHeight: 138, flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: spacing.xl, paddingVertical: spacing.md,
+  },
+  relSkeleton: { borderRadius: radius.lg, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
+  cpActionsRow: {
+    flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md, marginTop: -spacing.sm,
   },
   cpSlot: { alignItems: "center", width: 80, gap: 6 },
   cpSlotImage: {
@@ -1383,19 +1525,21 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: "#FFB6C1", backgroundColor: "rgba(255,255,255,0.15)",
     alignItems: "center", justifyContent: "center",
   },
-  cpSlotName: { color: colors.onSurface, fontWeight: "700", fontSize: 12 },
+  cpSlotName: { color: "#FFFFFF", fontWeight: "700", fontSize: 12 },
+  cpSlotSub: { color: "rgba(255,255,255,0.7)", fontSize: 10, fontWeight: "600", marginTop: -4 },
   cpMiddle: { alignItems: "center", gap: 6 },
   cpBadge: {
     paddingHorizontal: 10, paddingVertical: 3, borderRadius: radius.pill,
     backgroundColor: "#FF69B4",
   },
   cpBadgeText: { color: colors.onSurface, fontSize: 10, fontWeight: "800" },
-  cpMicBtn: {
-    position: "absolute", bottom: spacing.md, right: spacing.md,
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.4)", borderWidth: 1, borderColor: "#FFB6C1",
-    alignItems: "center", justifyContent: "center",
+  cpFindBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill,
+    backgroundColor: "rgba(0,0,0,0.35)", borderWidth: 1, borderColor: "#FFB6C1",
   },
+  cpFindText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  cpRequestsBtn: { backgroundColor: "#FF69B4", borderColor: "#FFFFFF" },
 
   friendsHeader: { flexDirection: "row", alignItems: "center", marginTop: spacing.lg },
   friendsHeaderTitle: { color: colors.onSurface, fontWeight: "800", fontSize: 14 },
@@ -1413,12 +1557,19 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   friendAvatarEmpty: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" },
-  friendName: { color: colors.onSurface, fontSize: 11, fontWeight: "700", maxWidth: 76, textAlign: "center" },
+  friendName: { color: "#FFFFFF", fontSize: 11, fontWeight: "700", maxWidth: 76, textAlign: "center" },
   friendInviteBtn: {
     paddingHorizontal: 12, paddingVertical: 4, borderRadius: radius.pill,
     backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
   },
-  friendInviteText: { color: colors.onSurface, fontSize: 11, fontWeight: "700" },
+  friendInviteText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
+  friendRequestCard: { flexDirection: "column", flexWrap: "nowrap", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingVertical: spacing.lg },
+  friendRequestBtnDone: { backgroundColor: "rgba(255,255,255,0.15)" },
+  friendRequestBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6, minHeight: 36,
+    paddingHorizontal: spacing.lg, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.brandPrimary,
+  },
+  friendRequestText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
 
   empty: { alignItems: "center", paddingVertical: spacing.lg, gap: 4 },
   emptyText: { color: colors.muted, fontSize: 12 },
