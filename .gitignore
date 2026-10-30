@@ -93,3 +93,6 @@ credentials.json
 # Firebase app config files: on EAS builds they come from secret file variables
 /frontend/google-services.json
 /frontend/GoogleService-Info.plist
+
+# Internal documents (reports, handover drafts) — kept out of the repository
+/docs/

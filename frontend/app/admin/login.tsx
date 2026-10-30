@@ -2,33 +2,35 @@
  * Iter-87 — Admin Dashboard login (Owner Google flow fully isolated).
  *
  * Access model:
- *   • Owner  — "Continue with Google" launches the Emergent Google OAuth with
- *              a redirect back to /admin/login. On return we exchange the
- *              session_id via a DEDICATED admin endpoint which only accepts
- *              the configured owner email. The Owner is NEVER routed through
- *              normal ORIO onboarding.
+ *   • Owner  — "Continue with Google" signs in with the company Firebase project
+ *              (popup on web, native Google Sign-In on phones). The Firebase ID
+ *              token goes to a DEDICATED admin endpoint which only accepts the
+ *              configured owner email. The Owner is NEVER routed through
+ *              normal onboarding.
  *   • Admin  — approved email + enabled flag; may sign in via any supported
  *              method (email/password). Server authorises every request.
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator,
-  useWindowDimensions, Platform,
+  useWindowDimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useAuth } from "@/src/auth-context";
-import { apiMe, apiAdminGoogleExchange } from "@/src/api";
+import { apiMe, apiAdminGoogleFirebase } from "@/src/api";
+import { getGoogleIdToken, GoogleSignInError } from "@/src/auth/googleSignIn";
 import { colors, radius, spacing } from "@/src/theme";
 
-const EMERGENT_AUTH_URL = "https://auth.emergentagent.com/";
-const SESSION_ID_RE = /[?#&]session_id=([^&#]+)/;
-
-function extractSessionId(url: string | null | undefined): string | null {
-  if (!url) return null;
-  const m = url.match(SESSION_ID_RE);
-  return m ? decodeURIComponent(m[1]) : null;
-}
+// Emergent Google OAuth (removed with the Emergent dependency). Kept for reference.
+// const EMERGENT_AUTH_URL = "https://auth.emergentagent.com/";
+// const SESSION_ID_RE = /[?#&]session_id=([^&#]+)/;
+//
+// function extractSessionId(url: string | null | undefined): string | null {
+//   if (!url) return null;
+//   const m = url.match(SESSION_ID_RE);
+//   return m ? decodeURIComponent(m[1]) : null;
+// }
 
 export default function AdminLogin() {
   const { signIn, user, loading, refresh } = useAuth();
@@ -44,7 +46,6 @@ export default function AdminLogin() {
     params.forbidden ? "You are signed in but not authorised to access the admin dashboard." : null
   );
   const [hidePwd, setHidePwd] = useState(true);
-  const processedSid = useRef<string | null>(null);
 
   // Auto-redirect ONLY when user already has verified admin access.
   useEffect(() => {
@@ -53,51 +54,9 @@ export default function AdminLogin() {
     }
   }, [user, loading, submitting, googleBusy, router]);
 
-  // Iter-87 — Dedicated handler for the Google OAuth callback on /admin/login.
-  // Only the configured Owner email is accepted; anyone else gets a clear
-  // "not the Owner" error AND is NOT given a normal ORIO session.
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    try {
-      // @ts-ignore
-      const href: string = typeof window !== "undefined" ? window.location.href : "";
-      const sid = extractSessionId(href);
-      if (!sid || processedSid.current === sid) return;
-      processedSid.current = sid;
-
-      // Clean the URL immediately so a refresh doesn't retry an expired session.
-      try {
-        // @ts-ignore
-        const u = new URL(window.location.href);
-        u.hash = u.hash.replace(SESSION_ID_RE, "");
-        u.searchParams.delete("session_id");
-        // @ts-ignore
-        window.history.replaceState(window.history.state, "", u.toString());
-      } catch {}
-
-      setGoogleBusy(true);
-      setError(null);
-      (async () => {
-        try {
-          await apiAdminGoogleExchange(sid);
-          await refresh();
-          const fresh = await apiMe();
-          if (fresh?.admin_access?.is_owner) {
-            router.replace("/admin");
-          } else {
-            setError("Owner authorisation failed. Try again.");
-          }
-        } catch (e: any) {
-          const msg = e?.message || "Google sign-in failed";
-          setError(msg);
-        } finally {
-          setGoogleBusy(false);
-        }
-      })();
-    } catch {}
-    // We only want this to run on mount; the processedSid guard dedupes anyway.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Emergent OAuth callback handler (removed with the Emergent dependency): it read a
+  // session_id from the URL after the Emergent redirect and exchanged it via
+  // apiAdminGoogleExchange. The Owner now signs in with Firebase Google (onGoogle below).
 
   const checkAndRedirect = async (): Promise<void> => {
     const fresh = await apiMe();
@@ -129,29 +88,27 @@ export default function AdminLogin() {
     }
   };
 
-  // Iter-87 — Admin Google OAuth: redirect back to /admin/login (NOT to /).
-  // This ensures our dedicated callback handler owns the exchange and the
-  // Owner never passes through the normal AuthProvider's generic processor.
-  const onGoogle = () => {
+
+  const onGoogle = async () => {
     setError(null);
-    if (Platform.OS !== "web") {
-      // On native, in-app browser Google sign-in flow is more involved; the
-      // admin dashboard is web-first per product spec. Direct the user to
-      // open the dashboard in a browser.
-      setError("Owner Google sign-in is available on the web admin dashboard.");
-      return;
-    }
+    setGoogleBusy(true);
     try {
-      // @ts-ignore
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const redirect = `${origin}/admin/login`;
-      const url = `${EMERGENT_AUTH_URL}?redirect=${encodeURIComponent(redirect)}`;
-      setGoogleBusy(true);
-      // @ts-ignore
-      window.location.href = url;
+      let idToken: string;
+      try {
+        idToken = await getGoogleIdToken();
+      } catch (e: any) {
+        if (e instanceof GoogleSignInError && e.code === "cancelled") return;
+        throw e;
+      }
+      await apiAdminGoogleFirebase(idToken);
+      await refresh();
+      const fresh = await apiMe();
+      if (fresh?.admin_access?.is_owner) router.replace("/admin");
+      else setError("Owner authorisation failed. Try again.");
     } catch (e: any) {
+      setError(e?.message || "Google sign-in failed");
+    } finally {
       setGoogleBusy(false);
-      setError(e?.message || "Could not start Google sign-in");
     }
   };
 

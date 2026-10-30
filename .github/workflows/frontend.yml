@@ -1,21 +1,39 @@
 name: frontend
 
+# Push to `frontend` → check, publish the website, start an Android build (when EXPO_TOKEN
+# is set). Pull requests → check only. Manual run: action "deploy" (default) or "rollback"
+# (website only — app builds are rolled back by re-installing an older EAS build).
+# The website is published through AWS Systems Manager (no SSH): deploy/ssm/README.md.
 on:
   push:
     branches: [frontend]
   pull_request:
     branches: [frontend]
   workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy = check and publish this branch; rollback = restore the previous website"
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+
+permissions:
+  contents: read
+  id-token: write   # GitHub OIDC → short-lived AWS credentials
 
 concurrency:
   group: frontend-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  WEB_DIR: /var/www/html
+  SITE_URL: https://aazabex.com/
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  DEPLOY_BUCKET: ${{ vars.DEPLOY_BUCKET }}
+  EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
 
 jobs:
   check:
+    if: github.event_name != 'workflow_dispatch' || inputs.action == 'deploy'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -38,15 +56,14 @@ jobs:
       - name: Lint (report only — pre-existing errors)
         continue-on-error: true
         run: yarn lint
-      - name: Type check (report only — pre-existing errors)
-        continue-on-error: true
+      - name: Type check
         run: npx tsc --noEmit
       - name: Android bundle compiles
         run: npx expo export --platform android --output-dir dist-ci
 
   web-deploy:
     needs: check
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/frontend'
+    if: github.ref == 'refs/heads/frontend' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy'))
     runs-on: ubuntu-latest
     environment: dev
     concurrency:
@@ -71,33 +88,47 @@ jobs:
           printf '%s\n' "$EXPO_ENV" > .env
       - name: Build web
         working-directory: frontend
-        run: npx expo export --platform web --output-dir dist-web
-      - uses: webfactory/ssh-agent@v0.9.0
+        run: |
+          npx expo export --platform web --output-dir dist-web --clear
+          printf '%s\n%s\n' "$GITHUB_SHA" "$(date -u +%FT%TZ) run $GITHUB_RUN_ID" > dist-web/REVISION
+          tar -czf ../site-release.tgz -C dist-web .
+          ls -lh ../site-release.tgz
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      - name: Trust server host key
-        run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
-      - name: Back up current site
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Upload build to S3
         run: |
-          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "sudo rsync -a --delete '$WEB_DIR/' '$WEB_DIR.prev/'"
-      - name: Upload site
+          echo "KEY=deploys/web/$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+          aws s3 cp site-release.tgz "s3://$DEPLOY_BUCKET/deploys/web/$GITHUB_RUN_ID/site-release.tgz"
+          aws s3 cp deploy/ssm/web_deploy.sh "s3://$DEPLOY_BUCKET/deploys/web/$GITHUB_RUN_ID/web_deploy.sh"
+      - name: Publish on the server (restores the previous site on failure)
+        run: bash deploy/ssm/ssm-fetch-run.sh "$KEY" "site-release.tgz web_deploy.sh" "bash ./web_deploy.sh ./site-release.tgz" 600
+      - name: Public site check
+        run: curl -sf "$SITE_URL" | grep -qi '<script' && echo "Site OK"
+
+  web-rollback:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Restore the previous website
         run: |
-          rsync -rz --delete --chmod=D755,F644 --rsync-path="sudo rsync" \
-            frontend/dist-web/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$WEB_DIR/"
-      - name: Site responds (restores previous site on failure)
-        run: |
-          for i in $(seq 1 10); do
-            if curl -sf https://aazabex.com/ | grep -qi '<script'; then echo "Site OK"; exit 0; fi
-            sleep 3
-          done
-          echo "Site check failed — restoring previous site"
-          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "sudo rsync -a --delete '$WEB_DIR.prev/' '$WEB_DIR/'"
-          exit 1
+          KEY="deploys/web/rollback-$GITHUB_RUN_ID"
+          aws s3 cp deploy/ssm/web_rollback.sh "s3://$DEPLOY_BUCKET/$KEY/web_rollback.sh"
+          bash deploy/ssm/ssm-fetch-run.sh "$KEY" "web_rollback.sh" "bash ./web_rollback.sh" 300
 
   apk-build:
     needs: check
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/frontend'
+    if: github.ref == 'refs/heads/frontend' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy'))
     runs-on: ubuntu-latest
     environment: dev
     defaults:
@@ -128,6 +159,30 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Start Android preview build (APK)
         if: env.EXPO_TOKEN != ''
-        # Runs on EAS; uses the `preview` profile in eas.json (backend URL set there).
-        # The APK download link appears on expo.dev under the project's builds.
+        # Runs on EAS with the `preview` profile (values from the EAS "preview" environment).
+        # The APK link appears on expo.dev → aazabex → yazeen → Builds.
         run: eas build --platform android --profile preview --non-interactive --no-wait
+
+# --------------------------------------------------------------------------------------
+# Previous SSH / rsync website upload — replaced by the SSM publish above so port 22 can
+# be closed to the internet. Kept for reference.
+# --------------------------------------------------------------------------------------
+#      - uses: webfactory/ssh-agent@v0.9.0
+#        with:
+#          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+#      - name: Trust server host key
+#        run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+#      - name: Back up current site
+#        run: ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "sudo rsync -a --delete '/var/www/html/' '/var/www/html.prev/'"
+#      - name: Upload site
+#        run: |
+#          rsync -rz --delete --chmod=D755,F644 --rsync-path="sudo rsync" \
+#            frontend/dist-web/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/html/"
+#      - name: Site responds (restores previous site on failure)
+#        run: |
+#          for i in $(seq 1 10); do
+#            if curl -sf https://aazabex.com/ | grep -qi '<script'; then echo "Site OK"; exit 0; fi
+#            sleep 3
+#          done
+#          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "sudo rsync -a --delete '/var/www/html.prev/' '/var/www/html/'"
+#          exit 1

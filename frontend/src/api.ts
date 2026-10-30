@@ -2379,40 +2379,69 @@ export async function apiAdminChangeOwner(new_email: string) {
   });
 }
 
+// Emergent-based Owner login exchange (removed with the Emergent dependency). Kept for reference.
+// /**
+//  * Iter-87 — Admin Owner Google session exchange.
+//  * Exchanges an Emergent Google session_id for an ORIO admin session.
+//  * Returns 403 unless the authenticated Google email matches ADMIN_OWNER_EMAIL.
+//  * On success, stores tokens via the same hooks used by regular login.
+//  */
+// export async function apiAdminGoogleExchange(
+//   session_id: string,
+// ): Promise<{ ok: true }> {
+//   const res = await fetch(`${API_BASE}/admin/auth/google/session`, {
+//     method: "POST",
+//     cache: "no-store",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({ session_id }),
+//   });
+//   if (!res.ok) {
+//     let msg = "Admin Google sign-in failed";
+//     try {
+//       const j = await res.json();
+//       if (j?.detail)
+//         msg =
+//           typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+//     } catch {}
+//     const err: any = new Error(msg);
+//     err.status = res.status;
+//     throw err;
+//   }
+//   const data = await res.json();
+//   if (data?.access_token) {
+//     setAccessToken(data.access_token);
+//   }
+//   if (data?.refresh_token) {
+//     await setRefreshToken(data.refresh_token);
+//   }
+//   return { ok: true };
+// }
+
 /**
- * Iter-87 — Admin Owner Google session exchange.
- * Exchanges an Emergent Google session_id for an ORIO admin session.
- * Returns 403 unless the authenticated Google email matches ADMIN_OWNER_EMAIL.
+ * Admin Owner Google sign-in: a Firebase ID token (company Firebase project) for an admin session.
+ * Returns 403 unless the Google email matches the configured Owner email.
  * On success, stores tokens via the same hooks used by regular login.
  */
-export async function apiAdminGoogleExchange(
-  session_id: string,
-): Promise<{ ok: true }> {
-  const res = await fetch(`${API_BASE}/admin/auth/google/session`, {
+export async function apiAdminGoogleFirebase(id_token: string): Promise<{ ok: true }> {
+  const res = await fetch(`${API_BASE}/admin/auth/google/firebase`, {
     method: "POST",
     cache: "no-store",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id }),
+    body: JSON.stringify({ id_token }),
   });
   if (!res.ok) {
     let msg = "Admin Google sign-in failed";
     try {
       const j = await res.json();
-      if (j?.detail)
-        msg =
-          typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      if (j?.detail) msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
     } catch {}
     const err: any = new Error(msg);
     err.status = res.status;
     throw err;
   }
   const data = await res.json();
-  if (data?.access_token) {
-    setAccessToken(data.access_token);
-  }
-  if (data?.refresh_token) {
-    await setRefreshToken(data.refresh_token);
-  }
+  if (data?.access_token) setAccessToken(data.access_token);
+  if (data?.refresh_token) await setRefreshToken(data.refresh_token);
   return { ok: true };
 }
 // ============================================================================

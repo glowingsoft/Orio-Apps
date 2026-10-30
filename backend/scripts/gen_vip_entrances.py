@@ -1,3 +1,6 @@
+"""LEGACY — not used by the app. Generated the VIP entrance clips once, through the Emergent proxy
+(removed). Kept for reference only; running it exits immediately.
+"""
 """One-off asset generation: VIP6 Ice Bear + VIP7 Golden Leopard entrance clips
 (fal.ai Veo 3.1 image-to-video with native audio, via Emergent Universal Key).
 Usage: python gen_vip_entrances.py <name> <frame.jpg> <out.mp4>
@@ -122,4 +125,6 @@ def main(name, frame, out):
 
 
 if __name__ == "__main__":
+    # LEGACY: depends on the removed Emergent Universal Key / proxy. Not part of the app.
+    sys.exit("gen_vip_entrances.py is legacy (needed the removed Emergent proxy); the entrance clips already exist.")
     main(*sys.argv[1:4])

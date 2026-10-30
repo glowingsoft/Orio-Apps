@@ -978,7 +978,7 @@ async def health():
     except HTTPException:
         tmp_ok = False
     ws_ok = any(importlib.util.find_spec(m) for m in ("websockets", "wsproto"))
-    return {"db": db_ok, "upload_tmp": tmp_ok, "storage": "s3" if _S3_BUCKET else "emergent", "websockets": ws_ok}
+    return {"db": db_ok, "upload_tmp": tmp_ok, "storage": "s3" if _S3_BUCKET else "not configured", "websockets": ws_ok}
 
 
 # ---------- Routes: Auth ----------
@@ -2181,12 +2181,16 @@ class _CheckoutIn(BaseModel):
 
 
 def _stripe_client(request: Request):
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout
-    key = os.environ.get("STRIPE_API_KEY", "")
-    if not key:
-        raise HTTPException(503, "Payments not configured")
-    host = str(request.base_url).rstrip("/")
-    return StripeCheckout(api_key=key, webhook_url=f"{host}/api/webhook/stripe")
+    # Card payments used Emergent's "emergentintegrations" Stripe wrapper, removed with the
+    # Emergent dependency. They will return on the official Stripe SDK (separate milestone);
+    # until then every payment endpoint answers 503 instead of failing on a missing package.
+    # from emergentintegrations.payments.stripe.checkout import StripeCheckout
+    # key = os.environ.get("STRIPE_API_KEY", "")
+    # if not key:
+    #     raise HTTPException(503, "Payments not configured")
+    # host = str(request.base_url).rstrip("/")
+    # return StripeCheckout(api_key=key, webhook_url=f"{host}/api/webhook/stripe")
+    raise HTTPException(503, "Card payments are not available yet")
 
 
 async def _fulfill_payment(db, session_id: str) -> bool:
@@ -2226,10 +2230,12 @@ async def _fulfill_payment(db, session_id: str) -> bool:
 
 @api.post("/payments/checkout")
 async def _payments_checkout(body: _CheckoutIn, request: Request, user=Depends(current_user)):
-    from emergentintegrations.payments.stripe.checkout import CheckoutSessionRequest
+    # from emergentintegrations.payments.stripe.checkout import CheckoutSessionRequest  (removed)
     # Iter-134 — payment gateways temporarily removed (test-mode recharge only).
     if os.environ.get("PAYMENTS_ENABLED", "false").strip().lower() not in ("1", "true", "yes", "on"):
         raise HTTPException(410, "Payments are temporarily disabled")
+    _stripe_client(request)  # 503 until card payments return on the official Stripe SDK
+    CheckoutSessionRequest = None  # placeholder for the removed Emergent type (never reached)
     pkg = next((p for p in COIN_PACKAGES if p["id"] == body.package_id), None)
     if not pkg:
         raise HTTPException(404, "Package not found")
@@ -2929,7 +2935,7 @@ class ProfileMediaIn(BaseModel):
 @api.patch("/users/me/profile-media")
 async def _set_profile_media(body: ProfileMediaIn, user=Depends(current_user)):
     """Update the current user's static or animated avatar. Storage is done by
-    the client via Emergent object storage (Presigned upload). This endpoint
+    the client via object storage (S3; chunked upload). This endpoint
     only persists the resulting URL on the user doc."""
     db = app.state.db
     k = (body.kind or "").lower()
@@ -13958,17 +13964,118 @@ except Exception as _e:
 # Only the configured ADMIN_OWNER_EMAIL can obtain an admin session here.
 # ---------------------------------------------------------------------------
 
-class _AdminGoogleSessionIn(BaseModel):
-    session_id: str = Field(min_length=8, max_length=512)
+# Emergent-based Owner login (removed: the app no longer depends on Emergent). Kept for reference.
+# class _AdminGoogleSessionIn(BaseModel):
+#     session_id: str = Field(min_length=8, max_length=512)
+#
+#
+# @api.post("/admin/auth/google/session", response_model=Tokens)
+# async def _admin_auth_google_session(body: _AdminGoogleSessionIn):
+#     """Verify Google session + Owner email, then issue a session skipping normal onboarding."""
+#     db = app.state.db
+#
+#     # Resolve the configured Owner email on every call so admin_config edits
+#     # take effect immediately.
+#     try:
+#         from admin_dashboard import get_owner_email as _get_owner_email
+#         owner_email = (await _get_owner_email(db)).strip().lower()
+#     except Exception:
+#         owner_email = ""
+#     if not owner_email:
+#         raise HTTPException(500, "Owner email is not configured")
+#
+#     # Exchange the Emergent session_id for Google profile data.
+#     try:
+#         async with _httpx.AsyncClient(timeout=10.0) as client:
+#             r = await client.get(
+#                 "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+#                 headers={"X-Session-ID": body.session_id},
+#             )
+#         if r.status_code != 200:
+#             raise HTTPException(401, "Invalid or expired Google session")
+#         data = r.json()
+#     except HTTPException:
+#         raise
+#     except Exception:
+#         raise HTTPException(401, "Google auth service unavailable")
+#
+#     email = norm_email(data.get("email") or "")
+#     if not email:
+#         raise HTTPException(400, "Google did not return an email")
+#
+#     # SECURITY: Only the configured Owner Google email can obtain an admin session.
+#     if email != owner_email:
+#         logger.warning(f"admin google session denied: {email} != owner {owner_email}")
+#         raise HTTPException(
+#             403,
+#             "This Google account is not the configured Owner. "
+#             "Admin team members must use the email/password login on /admin/login.",
+#         )
+#
+#     name = (data.get("name") or "Yazeen Owner")[:30]
+#     picture = data.get("picture")
+#
+#     # Create or update the Owner user record. Mark `profile_completed=true` so
+#     # the normal AuthGate NEVER redirects the Owner to the onboarding flow.
+#     user = await db.users.find_one({"email": email})
+#     now = now_utc()
+#     if not user:
+#         base = "".join(ch for ch in email.split("@")[0] if ch.isalnum())[:14] or "owner"
+#         candidate = base
+#         i = 0
+#         while await db.users.find_one({"username": candidate}):
+#             i += 1
+#             candidate = f"{base}{i}"
+#         doc = {
+#             "email": email,
+#             "username": candidate,
+#             "nickname": name,
+#             "password_hash": pw_hash(secrets.token_hex(24)),  # random; owner uses Google
+#             "auth_provider": "google",
+#             "avatar_url": picture or f"https://api.dicebear.com/7.x/avataaars/png?seed={candidate}",
+#             "bio": "Yazeen Owner",
+#             "level": 1,
+#             "wealth_level": 0, "charm_level": 0, "vip_level": 0,
+#             "wealth_points": 0, "charm_points": 0, "growth_points": 0,
+#             "coins": 0, "diamonds": 0, "experience": 0,
+#             "followers_count": 0, "following_count": 0,
+#             # Iter-87: Owner skips normal onboarding — mark as fully completed.
+#             "profile_completed": True,
+#             "gender_locked": True,
+#             "created_at": now,
+#             "language": "en",
+#         }
+#         ins = await db.users.insert_one(doc)
+#         uid = str(ins.inserted_id)
+#         logger.info(f"admin google session: created Owner user {email}")
+#     else:
+#         # Owner user already exists — ensure profile_completed=true so AuthGate
+#         # does NOT bounce them to onboarding, and refresh avatar/nickname.
+#         set_fields: Dict[str, Any] = {
+#             "profile_completed": True,
+#             "updated_at": now,
+#             "auth_provider": "google",
+#         }
+#         if picture and not user.get("avatar_url"):
+#             set_fields["avatar_url"] = picture
+#         if name and not user.get("nickname"):
+#             set_fields["nickname"] = name
+#         await db.users.update_one({"_id": user["_id"]}, {"$set": set_fields})
+#         uid = str(user["_id"])
+#
+#     return await issue_pair(db, uid)
 
 
-@api.post("/admin/auth/google/session", response_model=Tokens)
-async def _admin_auth_google_session(body: _AdminGoogleSessionIn):
-    """Verify Google session + Owner email, then issue a session skipping normal onboarding."""
+class _AdminGoogleFirebaseIn(BaseModel):
+    id_token: str = Field(min_length=20, max_length=8192)
+
+
+@api.post("/admin/auth/google/firebase", response_model=Tokens)
+async def _admin_auth_google_firebase(body: _AdminGoogleFirebaseIn):
+    """Owner Google sign-in for the admin dashboard, verified by the company's Firebase project.
+    Only the configured Owner email gets a session; it never goes through normal onboarding."""
+    from starlette.concurrency import run_in_threadpool
     db = app.state.db
-
-    # Resolve the configured Owner email on every call so admin_config edits
-    # take effect immediately.
     try:
         from admin_dashboard import get_owner_email as _get_owner_email
         owner_email = (await _get_owner_email(db)).strip().lower()
@@ -13977,39 +14084,24 @@ async def _admin_auth_google_session(body: _AdminGoogleSessionIn):
     if not owner_email:
         raise HTTPException(500, "Owner email is not configured")
 
-    # Exchange the Emergent session_id for Google profile data.
-    try:
-        async with _httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.get(
-                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-                headers={"X-Session-ID": body.session_id},
-            )
-        if r.status_code != 200:
-            raise HTTPException(401, "Invalid or expired Google session")
-        data = r.json()
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(401, "Google auth service unavailable")
-
-    email = norm_email(data.get("email") or "")
+    claims = await run_in_threadpool(_verify_firebase_google_token, body.id_token.strip())
+    email = norm_email(claims.get("email") or "")
     if not email:
         raise HTTPException(400, "Google did not return an email")
-
-    # SECURITY: Only the configured Owner Google email can obtain an admin session.
+    if claims.get("email_verified") is not True:
+        raise HTTPException(403, "Your Google email is not verified")
+    # SECURITY: only the configured Owner Google email can obtain an admin session.
     if email != owner_email:
-        logger.warning(f"admin google session denied: {email} != owner {owner_email}")
+        logger.warning(f"admin google login denied: {email} != owner {owner_email}")
         raise HTTPException(
             403,
             "This Google account is not the configured Owner. "
             "Admin team members must use the email/password login on /admin/login.",
         )
+    firebase_uid = str(claims.get("uid") or claims.get("sub") or "").strip()
+    name = (claims.get("name") or "Yazeen Owner")[:30]
+    picture = claims.get("picture")
 
-    name = (data.get("name") or "Yazeen Owner")[:30]
-    picture = data.get("picture")
-
-    # Create or update the Owner user record. Mark `profile_completed=true` so
-    # the normal AuthGate NEVER redirects the Owner to the onboarding flow.
     user = await db.users.find_one({"email": email})
     now = now_utc()
     if not user:
@@ -14020,42 +14112,38 @@ async def _admin_auth_google_session(body: _AdminGoogleSessionIn):
             i += 1
             candidate = f"{base}{i}"
         doc = {
-            "email": email,
-            "username": candidate,
-            "nickname": name,
-            "password_hash": pw_hash(secrets.token_hex(24)),  # random; owner uses Google
+            "email": email, "username": candidate, "nickname": name,
+            "password_hash": pw_hash(secrets.token_hex(24)),  # random; the Owner uses Google
             "auth_provider": "google",
             "avatar_url": picture or f"https://api.dicebear.com/7.x/avataaars/png?seed={candidate}",
-            "bio": "Yazeen Owner",
-            "level": 1,
+            "bio": "Yazeen Owner", "level": 1,
             "wealth_level": 0, "charm_level": 0, "vip_level": 0,
             "wealth_points": 0, "charm_points": 0, "growth_points": 0,
             "coins": 0, "diamonds": 0, "experience": 0,
             "followers_count": 0, "following_count": 0,
-            # Iter-87: Owner skips normal onboarding — mark as fully completed.
-            "profile_completed": True,
-            "gender_locked": True,
-            "created_at": now,
-            "language": "en",
+            # The Owner skips normal onboarding.
+            "profile_completed": True, "gender_locked": True,
+            "created_at": now, "language": "en",
         }
+        if firebase_uid:
+            doc["firebase_uid"] = firebase_uid
         ins = await db.users.insert_one(doc)
         uid = str(ins.inserted_id)
-        logger.info(f"admin google session: created Owner user {email}")
+        logger.info(f"admin google login: created Owner user {email}")
+        if picture:
+            await _import_google_avatar_for(db, {"_id": ins.inserted_id, "avatar_url": doc["avatar_url"]})
     else:
-        # Owner user already exists — ensure profile_completed=true so AuthGate
-        # does NOT bounce them to onboarding, and refresh avatar/nickname.
-        set_fields: Dict[str, Any] = {
-            "profile_completed": True,
-            "updated_at": now,
-            "auth_provider": "google",
-        }
+        if user.get("firebase_uid") and firebase_uid and user["firebase_uid"] != firebase_uid:
+            raise HTTPException(409, "This email is linked to a different Google account")
+        set_fields: Dict[str, Any] = {"profile_completed": True, "updated_at": now, "auth_provider": "google"}
+        if firebase_uid and not user.get("firebase_uid"):
+            set_fields["firebase_uid"] = firebase_uid
         if picture and not user.get("avatar_url"):
             set_fields["avatar_url"] = picture
         if name and not user.get("nickname"):
             set_fields["nickname"] = name
         await db.users.update_one({"_id": user["_id"]}, {"$set": set_fields})
         uid = str(user["_id"])
-
     return await issue_pair(db, uid)
 
 
@@ -14819,10 +14907,11 @@ from fastapi import Request as _Request  # noqa: E402
 from fastapi.responses import Response as _Response  # noqa: E402
 from starlette.concurrency import run_in_threadpool as _run_in_threadpool  # noqa: E402
 
-_STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-_STORAGE_URL = _STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-_STORAGE_APP = "orio"
-_storage_key: Optional[str] = None
+# Media storage is AWS S3 only (S3_BUCKET). The Emergent object-storage fallback was removed.
+# _STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+# _STORAGE_URL = _STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+_STORAGE_APP = "orio"  # key prefix inside the bucket (kept so existing object paths stay valid)
+# _storage_key: Optional[str] = None
 import tempfile as _tempfile  # noqa: E402
 # Chunked uploads are staged on local disk before going to storage. Override
 # with UPLOAD_TMP_DIR when the default temp dir is not writable by the service.
@@ -14842,18 +14931,24 @@ _MEDIA_LIMITS = {"image": 10 * 1024 * 1024, "video": 60 * 1024 * 1024, "audio": 
 _MEDIA_CACHE: dict = {}  # small in-process LRU of recently served objects
 
 
-def _storage_init(force: bool = False) -> str:
-    global _storage_key
-    if _storage_key and not force:
-        return _storage_key
-    try:
-        resp = _requests.post(f"{_STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=30)
-        resp.raise_for_status()
-        _storage_key = resp.json()["storage_key"]
-    except Exception:
-        logger.exception("Emergent storage init failed (is S3_BUCKET set?)")
-        raise HTTPException(503, "Storage unavailable")
-    return _storage_key
+# Emergent object-storage init (removed with the Emergent dependency). Kept for reference.
+# def _storage_init(force: bool = False) -> str:
+#     global _storage_key
+#     if _storage_key and not force:
+#         return _storage_key
+#     try:
+#         resp = _requests.post(f"{_STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=30)
+#         resp.raise_for_status()
+#         _storage_key = resp.json()["storage_key"]
+#     except Exception:
+#         logger.exception("Emergent storage init failed (is S3_BUCKET set?)")
+#         raise HTTPException(503, "Storage unavailable")
+#     return _storage_key
+
+
+def _storage_not_configured() -> HTTPException:
+    logger.error("Media storage is not configured: set S3_BUCKET (and AWS_REGION / credentials)")
+    return HTTPException(503, "Storage unavailable")
 
 
 _S3_BUCKET = (os.environ.get("S3_BUCKET") or "").strip()
@@ -14881,17 +14976,18 @@ def _storage_put(path: str, data: bytes, content_type: str) -> dict:
             logging.getLogger(__name__).exception("S3 upload failed")
             raise HTTPException(503, "Storage unavailable")
         return {"path": path}
-    for attempt in range(2):
-        key = _storage_init(force=attempt > 0)
-        resp = _requests.put(f"{_STORAGE_URL}/objects/{path}",
-                             headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=180)
-        if resp.status_code == 503 and attempt == 0:
-            continue
-        if resp.status_code == 402:
-            raise HTTPException(402, "Storage credits exhausted. Please try again later.")
-        resp.raise_for_status()
-        return resp.json()
-    raise HTTPException(503, "Storage unavailable")
+    # Emergent storage fallback (removed):
+    # for attempt in range(2):
+    #     key = _storage_init(force=attempt > 0)
+    #     resp = _requests.put(f"{_STORAGE_URL}/objects/{path}",
+    #                          headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=180)
+    #     if resp.status_code == 503 and attempt == 0:
+    #         continue
+    #     if resp.status_code == 402:
+    #         raise HTTPException(402, "Storage credits exhausted. Please try again later.")
+    #     resp.raise_for_status()
+    #     return resp.json()
+    raise _storage_not_configured()
 
 
 def _storage_get(path: str) -> tuple:
@@ -14905,14 +15001,15 @@ def _storage_get(path: str) -> tuple:
                 raise HTTPException(404, "Not found")
             logging.getLogger(__name__).exception("S3 download failed")
             raise HTTPException(503, "Storage unavailable")
-    for attempt in range(2):
-        key = _storage_init(force=attempt > 0)
-        resp = _requests.get(f"{_STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=90)
-        if resp.status_code == 503 and attempt == 0:
-            continue
-        resp.raise_for_status()
-        return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
-    raise HTTPException(503, "Storage unavailable")
+    # Emergent storage fallback (removed):
+    # for attempt in range(2):
+    #     key = _storage_init(force=attempt > 0)
+    #     resp = _requests.get(f"{_STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=90)
+    #     if resp.status_code == 503 and attempt == 0:
+    #         continue
+    #     resp.raise_for_status()
+    #     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    raise _storage_not_configured()
 
 
 def _ffmpeg_exe() -> Optional[str]:

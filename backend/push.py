@@ -37,13 +37,20 @@ def _firebase():
 
 
 def _firebase_enabled() -> bool:
-    return os.environ.get("PUSH_PROVIDER", "firebase").strip().lower() == "firebase"
+    # Push is Firebase-only (the Emergent push relay was removed). Any other
+    # PUSH_PROVIDER value is ignored with a warning instead of routing elsewhere.
+    provider = os.environ.get("PUSH_PROVIDER", "firebase").strip().lower()
+    if provider != "firebase":
+        logger.warning("PUSH_PROVIDER=%s is not supported; using Firebase", provider)
+    return True
 
 
 async def register_device(db: Any, user_id: str, platform: str, device_token: str) -> None:
-    if not _firebase_enabled():
-        await _register_emergent(user_id, platform, device_token)
-        return
+    _firebase_enabled()
+    # Emergent relay (removed):
+    # if not _firebase_enabled():
+    #     await _register_emergent(user_id, platform, device_token)
+    #     return
     try:
         await asyncio.to_thread(_firebase)
     except Exception as exc:  # noqa: BLE001
@@ -57,20 +64,21 @@ async def register_device(db: Any, user_id: str, platform: str, device_token: st
     )
 
 
-async def _register_emergent(user_id: str, platform: str, device_token: str) -> None:
-    import httpx
-
-    async with httpx.AsyncClient(
-        base_url="https://integrations.emergentagent.com",
-        headers={"X-Push-Key": os.environ.get("EMERGENT_PUSH_KEY", "placeholder")}, timeout=10.0,
-    ) as client:
-        resp = await client.post("/api/v1/push/users/register",
-                                 json={"user_id": user_id, "platform": platform, "device_token": device_token})
-    if resp.status_code == 401:
-        raise HTTPException(500, "EMERGENT_PUSH_KEY missing or invalid")
-    if resp.status_code >= 500:
-        raise HTTPException(502, "Push provider unavailable")
-    resp.raise_for_status()
+# Emergent push relay (removed with the Emergent dependency). Kept for reference.
+# async def _register_emergent(user_id: str, platform: str, device_token: str) -> None:
+#     import httpx
+#
+#     async with httpx.AsyncClient(
+#         base_url="https://integrations.emergentagent.com",
+#         headers={"X-Push-Key": os.environ.get("EMERGENT_PUSH_KEY", "placeholder")}, timeout=10.0,
+#     ) as client:
+#         resp = await client.post("/api/v1/push/users/register",
+#                                  json={"user_id": user_id, "platform": platform, "device_token": device_token})
+#     if resp.status_code == 401:
+#         raise HTTPException(500, "EMERGENT_PUSH_KEY missing or invalid")
+#     if resp.status_code >= 500:
+#         raise HTTPException(502, "Push provider unavailable")
+#     resp.raise_for_status()
 
 
 async def send_push(db: Any, recipients: list[str], data: dict,
@@ -80,9 +88,10 @@ async def send_push(db: Any, recipients: list[str], data: dict,
     recipients = [r for r in dict.fromkeys(recipients) if r]
     if not recipients:
         return
-    if not _firebase_enabled():
-        await _send_emergent(recipients, data)
-        return
+    # Emergent relay (removed):
+    # if not _firebase_enabled():
+    #     await _send_emergent(recipients, data)
+    #     return
     if "title" not in data or "message" not in data:
         raise ValueError("data must include title and message")
 
@@ -127,19 +136,20 @@ def _send_firebase_batch(devices: list[dict], data: dict) -> list[str]:
     return stale_tokens
 
 
-async def _send_emergent(recipients: list[str], data: dict) -> None:
-    import httpx
-
-    if "title" not in data or "message" not in data:
-        raise ValueError("data must include title and message")
-    async with httpx.AsyncClient(
-        base_url="https://integrations.emergentagent.com",
-        headers={"X-Push-Key": os.environ.get("EMERGENT_PUSH_KEY", "placeholder")}, timeout=10.0,
-    ) as client:
-        for offset in range(0, len(recipients), 100):
-            resp = await client.post("/api/v1/push/trigger", json={"recipients": recipients[offset:offset + 100], "data": data})
-            if resp.status_code == 401:
-                raise HTTPException(500, "EMERGENT_PUSH_KEY missing or invalid")
-            if resp.status_code >= 500:
-                raise HTTPException(502, "Push provider unavailable")
-            resp.raise_for_status()
+# Emergent push relay (removed with the Emergent dependency). Kept for reference.
+# async def _send_emergent(recipients: list[str], data: dict) -> None:
+#     import httpx
+#
+#     if "title" not in data or "message" not in data:
+#         raise ValueError("data must include title and message")
+#     async with httpx.AsyncClient(
+#         base_url="https://integrations.emergentagent.com",
+#         headers={"X-Push-Key": os.environ.get("EMERGENT_PUSH_KEY", "placeholder")}, timeout=10.0,
+#     ) as client:
+#         for offset in range(0, len(recipients), 100):
+#             resp = await client.post("/api/v1/push/trigger", json={"recipients": recipients[offset:offset + 100], "data": data})
+#             if resp.status_code == 401:
+#                 raise HTTPException(500, "EMERGENT_PUSH_KEY missing or invalid")
+#             if resp.status_code >= 500:
+#                 raise HTTPException(502, "Push provider unavailable")
+#             resp.raise_for_status()

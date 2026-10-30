@@ -1,27 +1,42 @@
 name: backend
 
 # Push to `backend` → check, then deploy to the server. Pull requests to `backend` → check only.
+# Manual run (Actions → backend → Run workflow): action "deploy" (default), "rollback", or
+# "test-auto-rollback" (deploys with a simulated failed health check to prove the automatic
+# rollback works — run it right after a successful deploy so the code does not change).
+# Deploys go through AWS Systems Manager — no SSH, so port 22 can stay closed to the
+# internet. One-time AWS / GitHub setup: deploy/ssm/README.md.
 on:
   push:
     branches: [backend]
   pull_request:
     branches: [backend]
   workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy = check and deploy this branch; rollback = restore the previous release; test-auto-rollback = deploy with a simulated failure"
+        type: choice
+        options: [deploy, rollback, test-auto-rollback]
+        default: deploy
+
+permissions:
+  contents: read
+  id-token: write   # GitHub OIDC → short-lived AWS credentials (no AWS keys stored in GitHub)
 
 concurrency:
   group: backend-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # Server layout: backend code lives directly in BACKEND_DIR, with its venv inside it.
-  BACKEND_DIR: /home/ubuntu/orio
-  VENV_DIR: /home/ubuntu/orio/venv
-  BACKUP_DIR: /home/ubuntu/orio.prev
-  SERVICE: orio
   HEALTH_URL: https://aazabex.com/api/health
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  DEPLOY_BUCKET: ${{ vars.DEPLOY_BUCKET }}
+  EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+  FIREBASE_PARAM: /yazeen/prod/firebase-service-account
 
 jobs:
   check:
+    if: github.event_name != 'workflow_dispatch' || inputs.action != 'rollback'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -61,7 +76,7 @@ jobs:
 
   deploy:
     needs: check
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/backend'
+    if: github.ref == 'refs/heads/backend' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action != 'rollback'))
     runs-on: ubuntu-latest
     environment: dev
     concurrency:
@@ -69,54 +84,117 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-      - uses: webfactory/ssh-agent@v0.9.0
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      - name: Trust server host key
-        run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
-      - name: Check server layout
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Package release
+        # Never includes the server's .env, the Firebase key, the venv, tests or logs.
         run: |
-          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "test -f '$BACKEND_DIR/server.py' && test -x '$VENV_DIR/bin/pip'" \
-            || { echo "::error::Expected $BACKEND_DIR/server.py and $VENV_DIR/bin/pip on the server"; exit 1; }
-      - name: Back up current code
-        # The venv is excluded: it is never copied, overwritten or deleted.
+          printf '%s\n%s\n' "$GITHUB_SHA" "$(date -u +%FT%TZ) run $GITHUB_RUN_ID" > backend/REVISION
+          tar -czf backend-release.tgz -C backend \
+            --exclude='./.env' --exclude='./service-account.json' --exclude='./venv' \
+            --exclude='__pycache__' --exclude='./tests' --exclude='*.log' .
+          ls -lh backend-release.tgz
+      - name: Upload release to S3
         run: |
-          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "rsync -a --delete --exclude 'venv/' --exclude '__pycache__/' '$BACKEND_DIR/' '$BACKUP_DIR/'"
-      - name: Upload code
-        # The server's .env, Firebase key, venv, uploads and caches stay untouched.
-        run: |
-          rsync -az --exclude '.env' --exclude 'service-account.json' --exclude 'venv/' --exclude '__pycache__/' --exclude 'tests/' --exclude '*.log' \
-            backend/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$BACKEND_DIR/"
-      - name: Write Firebase key from the FIREBASE_SERVICE_ACCOUNT secret
-        # Optional: if the secret is not set, the key file already on the server is kept.
+          echo "KEY=deploys/backend/$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+          aws s3 cp backend-release.tgz "s3://$DEPLOY_BUCKET/deploys/backend/$GITHUB_RUN_ID/backend-release.tgz"
+          aws s3 cp deploy/ssm/backend_deploy.sh "s3://$DEPLOY_BUCKET/deploys/backend/$GITHUB_RUN_ID/backend_deploy.sh"
+      - name: Store Firebase key in Parameter Store
+        # Optional: without the secret, the key file already on the server is kept.
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "::notice::FIREBASE_SERVICE_ACCOUNT not set — keeping the server's existing service-account.json"; exit 0
+            echo "FB=-" >> "$GITHUB_ENV"
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT not set — keeping the server's key file"; exit 0
           fi
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('type')=='service_account' and d.get('private_key')" \
             || { echo "::error::FIREBASE_SERVICE_ACCOUNT is not a valid service account JSON"; exit 1; }
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "umask 077 && cat > '$BACKEND_DIR/service-account.json' && chmod 600 '$BACKEND_DIR/service-account.json'"
-      - name: Install, restart, health check (rolls back on failure)
+          umask 077; printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/fb.json
+          aws ssm put-parameter --name "$FIREBASE_PARAM" --type SecureString --overwrite --value file:///tmp/fb.json > /dev/null
+          rm -f /tmp/fb.json
+          echo "FB=$FIREBASE_PARAM" >> "$GITHUB_ENV"
+      - name: Deploy on the server (rolls back automatically on failure)
+        if: inputs.action != 'test-auto-rollback'
         run: |
-          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" bash -s <<EOF
-          set -e
-          rollback() {
-            echo "Deploy failed — restoring previous code"
-            rsync -a --delete --exclude 'venv/' '$BACKUP_DIR/' '$BACKEND_DIR/'
-            sudo systemctl restart '$SERVICE'
-            exit 1
-          }
-          '$VENV_DIR/bin/pip' install -q -r '$BACKEND_DIR/requirements.txt' || rollback
-          sudo systemctl restart '$SERVICE' || rollback
-          for i in \$(seq 1 30); do
-            if curl -sf '$HEALTH_URL' | grep -q '"db":true'; then curl -s '$HEALTH_URL'; echo; exit 0; fi
-            sleep 2
-          done
-          sudo journalctl -u '$SERVICE' -n 50 --no-pager
-          rollback
-          EOF
+          bash deploy/ssm/ssm-fetch-run.sh "$KEY" "backend-release.tgz backend_deploy.sh" \
+            "bash ./backend_deploy.sh ./backend-release.tgz $FB" 1200
+      - name: Automatic-rollback test (simulated failed health check)
+        if: inputs.action == 'test-auto-rollback'
+        # Passes only if the server's deploy script exited with code 1 (= "failed, rolled back,
+        # previous release healthy") AND printed its marker. Code 0 means no rollback happened;
+        # code 2 means the rollback itself was unhealthy.
+        run: |
+          set +e
+          OUT=$(bash deploy/ssm/ssm-fetch-run.sh "$KEY" "backend-release.tgz backend_deploy.sh" \
+            "SIMULATE_HEALTH_FAILURE=1 bash ./backend_deploy.sh ./backend-release.tgz $FB" 1200 2>&1)
+          RC=$?
+          echo "$OUT"
+          if [ "$RC" -eq 1 ] && echo "$OUT" | grep -q "Rolled back and healthy"; then
+            echo "::notice::Automatic rollback verified - the previous release was restored and is healthy"
+          else
+            echo "::error::Automatic rollback test failed (server exit code $RC)"; exit 1
+          fi
+      - name: Public health check
+        run: curl -sf "$HEALTH_URL" && echo
+
+  rollback:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency:
+      group: deploy-backend
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Roll back to the previous release
+        run: |
+          KEY="deploys/backend/rollback-$GITHUB_RUN_ID"
+          aws s3 cp deploy/ssm/backend_rollback.sh "s3://$DEPLOY_BUCKET/$KEY/backend_rollback.sh"
+          bash deploy/ssm/ssm-fetch-run.sh "$KEY" "backend_rollback.sh" "bash ./backend_rollback.sh" 600
+      - name: Public health check
+        run: curl -sf "$HEALTH_URL" && echo
+
+# --------------------------------------------------------------------------------------
+# Previous SSH / rsync deploy job — replaced by the SSM deploy above so port 22 can be
+# closed to the internet. Kept for reference.
+# --------------------------------------------------------------------------------------
+#  deploy:
+#    needs: check
+#    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/backend'
+#    runs-on: ubuntu-latest
+#    environment: dev
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: webfactory/ssh-agent@v0.9.0
+#        with:
+#          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+#      - name: Trust server host key
+#        run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+#      - name: Back up current code
+#        run: |
+#          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+#            "rsync -a --delete --exclude 'venv/' --exclude '__pycache__/' '/home/ubuntu/orio/' '/home/ubuntu/orio.prev/'"
+#      - name: Upload code
+#        run: |
+#          rsync -az --exclude '.env' --exclude 'service-account.json' --exclude 'venv/' --exclude '__pycache__/' --exclude 'tests/' --exclude '*.log' \
+#            backend/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/ubuntu/orio/"
+#      - name: Install, restart, health check (rolls back on failure)
+#        run: |
+#          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" bash -s <<EOF
+#          set -e
+#          rollback() { rsync -a --delete --exclude 'venv/' '/home/ubuntu/orio.prev/' '/home/ubuntu/orio/'; sudo systemctl restart orio; exit 1; }
+#          '/home/ubuntu/orio/venv/bin/pip' install -q -r '/home/ubuntu/orio/requirements.txt' || rollback
+#          sudo systemctl restart orio || rollback
+#          for i in \$(seq 1 30); do
+#            if curl -sf 'https://aazabex.com/api/health' | grep -q '"db":true'; then exit 0; fi
+#            sleep 2
+#          done
+#          rollback
+#          EOF
