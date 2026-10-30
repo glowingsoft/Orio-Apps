@@ -42,9 +42,16 @@ jobs:
       run:
         working-directory: backend
     services:
+      # Temporary MongoDB for this CI run only (database orio_ci) — never the production database.
+      # The health check makes GitHub wait until it accepts connections before the steps start.
       mongo:
         image: mongo:8.0
         ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       MONGO_URL: mongodb://localhost:27017
       DB_NAME: orio_ci
