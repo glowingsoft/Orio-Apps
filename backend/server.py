@@ -441,7 +441,7 @@ app = FastAPI(
 # Browsers may only call the API from these origins. Native apps send no Origin
 # header, so CORS does not affect them. Auth uses Bearer tokens, not cookies.
 CORS_ORIGINS = [o.strip().rstrip("/") for o in (os.environ.get("CORS_ORIGINS")
-                or "https://aazabex.com,https://www.aazabex.com").split(",") if o.strip()]
+                or "https://aazabex.com,https://www.aazabex.com,https://dev.aazabex.com").split(",") if o.strip()]
 # Local development: Expo web on localhost or a LAN address, any port.
 CORS_ORIGIN_REGEX = os.environ.get("CORS_ORIGIN_REGEX") or \
     r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$"
